@@ -1,0 +1,29 @@
+{
+  "RODirs": [
+    "/usr/share/zoneinfo",
+    "/etc/ssl/certs",
+    "/proc",
+    "/etc/saves"
+  ],
+  "ROFiles": [
+    "/etc/resolv.conf",
+    "/etc/hosts",
+    "/etc/nsswitch.conf"
+  ],
+  "RWDirs": [
+    "/data/blobs",
+    "/data"
+  ],
+  "RWFiles": null,
+  "ConnectTCP": [
+    53
+  ],
+  "BindTCP": [
+    8443,
+    9090
+  ],
+  "ConnectUDP": [
+    53
+  ],
+  "Scoped": true
+}

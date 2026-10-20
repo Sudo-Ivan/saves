@@ -65,7 +65,7 @@ func TestCrossOS(t *testing.T) {
 	if err := ix.Save(hB + "/.cache/saves/index.json"); err != nil {
 		t.Fatal(err)
 	}
-	code, out, _ := run(t, envB, "games", "list", "--json")
+	_, out, _ := run(t, envB, "games", "list", "--json")
 	t.Logf("games: %s", out)
 	// manual track of the wine Documents path
 	code, _, se = run(t, envB, "track", "add", "--path", pfx+"/My Games/TestGame",

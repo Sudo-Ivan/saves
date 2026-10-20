@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,8 +31,10 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/metrics"
 	"github.com/Sudo-Ivan/saves/internal/netx"
 	"github.com/Sudo-Ivan/saves/internal/quota"
+	"github.com/Sudo-Ivan/saves/internal/sandbox"
 	"github.com/Sudo-Ivan/saves/internal/server"
 	"github.com/Sudo-Ivan/saves/internal/service"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Version is the build version.
@@ -47,6 +50,8 @@ func Run(argv []string) int {
 	args := argv[1:]
 	_ = rest
 	switch cmd {
+	case "sandbox-check":
+		return cmdSandboxCheck(argv[1:])
 	case "serve":
 		return cmdServe(args)
 	case "config":
@@ -178,8 +183,53 @@ func openBlob(cfg *config.Config) (blob.Store, error) {
 
 // applySandbox is the phase 4b hook. It is intentionally a no-op until
 // the sandbox lands; it sits between resource open and serve.
-func applySandbox(cfg *config.Config) error {
-	_ = cfg
+func cmdSandboxCheck(args []string) int {
+	cfg, err := config.Load(configPath(args))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "config error:", err)
+		return 1
+	}
+	pol, err := sandbox.FromConfig(cfg, configPath(args))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "policy error:", err)
+		return 1
+	}
+	if os.Getenv("SAVES_SBX_CHILD") == "1" {
+		return sandbox.Child(pol, cfg.Sandbox.Mode)
+	}
+	cmd := exec.Command(os.Args[0], "sandbox-check")
+	cmd.Args = append(cmd.Args, args...)
+	cmd.Env = append(os.Environ(), "SAVES_SBX_CHILD=1")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode()
+		}
+		return 1
+	}
+	return 0
+}
+
+func applySandbox(cfg *config.Config, reg *prometheus.Registry) error {
+	if err := sandbox.Harden(cfg.Sandbox.AllowRoot); err != nil {
+		return err
+	}
+	pol, err := sandbox.FromConfig(cfg, configPath(os.Args[1:]))
+	if err != nil {
+		return err
+	}
+	rep, err := sandbox.Apply(pol, cfg.Sandbox.Mode)
+	if err != nil {
+		return err
+	}
+	if cfg.Sandbox.Mode == "off" {
+		slog.Warn("sandbox disabled")
+	} else {
+		slog.Info("sandbox", "abi", rep.ABI, "fs", rep.FS, "tcp", rep.TCP, "scoped", rep.Scoped, "mode", rep.Mode)
+		if reg != nil {
+			sandbox.ReportMetrics(reg, rep)
+		}
+	}
 	return nil
 }
 
@@ -241,7 +291,7 @@ func cmdServe(args []string) int {
 	defer stop()
 
 	// Sandbox hook before serving (4b).
-	if err := applySandbox(cfg); err != nil {
+	if err := applySandbox(cfg, met.Reg); err != nil {
 		logger.Error("sandbox", "err", err)
 		return 1
 	}

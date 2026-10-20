@@ -131,7 +131,7 @@ func mapErr(err error) error {
 	case errors.Is(err, meta.ErrDisabled):
 		return &api.Problem{Code: api.CodeForbidden, Title: "disabled", Status: 403}
 	case errors.As(err, &qe):
-		return &api.Problem{Code: api.CodeQuotaExceeded, Title: "quota exceeded", Status: 429, Detail: qe.Error()}
+		return &api.Problem{Code: api.CodeQuotaExceeded, Title: "quota exceeded", Status: 413, Detail: qe.Error()}
 	case errors.As(err, &ce):
 		return &api.Problem{Code: api.CodeConflict, Title: "head conflict", Status: 409}
 	case errors.As(err, &ie):
@@ -306,6 +306,11 @@ func (s *Service) CommitSnapshot(ctx context.Context, p auth.Principal, app, slo
 		ExpectedHead: expectedHead, Force: force,
 		KeepLast: eff.KeepLast, MaxAge: time.Duration(eff.MaxAge),
 	})
+	var ce *meta.ConflictError
+	if errors.As(err, &ce) {
+		// Keep the typed error so the handler can include the head.
+		return res, err
+	}
 	return res, mapErr(err)
 }
 

@@ -72,6 +72,19 @@ func (r *Resolver) For(u meta.User, appID string, anonymous bool) (Effective, er
 		MaxConcurrentUploads: t.MaxConcurrentUploads,
 		APILimits:            c.Limits.APILimits(),
 	}
+	// Tier limits narrow the global api limits; zero means inherit.
+	if t.MaxFiles > 0 && (e.APILimits.MaxFiles == 0 || t.MaxFiles < e.APILimits.MaxFiles) {
+		e.APILimits.MaxFiles = t.MaxFiles
+	}
+	if t.MaxFileBytes > 0 && (e.APILimits.MaxFileBytes == 0 || t.MaxFileBytes.Int64() < e.APILimits.MaxFileBytes) {
+		e.APILimits.MaxFileBytes = t.MaxFileBytes.Int64()
+	}
+	if t.MaxSnapshotBytes > 0 && (e.APILimits.MaxSnapshotBytes == 0 || t.MaxSnapshotBytes.Int64() < e.APILimits.MaxSnapshotBytes) {
+		e.APILimits.MaxSnapshotBytes = t.MaxSnapshotBytes.Int64()
+	}
+	if t.MaxSnapshotsPerSlot > 0 && (e.KeepLast == 0 || t.MaxSnapshotsPerSlot < e.KeepLast) {
+		e.KeepLast = t.MaxSnapshotsPerSlot
+	}
 	if u.QuotaBytes != nil {
 		e.QuotaBytes = *u.QuotaBytes
 	}

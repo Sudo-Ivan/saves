@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: 0BSD
 
-// Command savesctl is the saves sync client CLI.
+// savesctl is the saves CLI.
 package main
 
-import "fmt"
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
-// version is the build version, overridden at link time.
-var version = "dev"
+	"github.com/Sudo-Ivan/saves/internal/cli"
+)
 
 func main() {
-	fmt.Println("savesctl", version)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	os.Exit(cli.Main(ctx, cli.DefaultEnv(), os.Args[1:]))
 }

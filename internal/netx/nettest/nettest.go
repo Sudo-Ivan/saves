@@ -14,6 +14,8 @@ import (
 	"net/netip"
 	"syscall"
 	"time"
+
+	"github.com/Sudo-Ivan/saves/internal/netx"
 )
 
 const bufSize = 4 << 20
@@ -24,8 +26,7 @@ func LoopbackDialer() *net.Dialer {
 		Timeout: 30 * time.Second,
 		Control: func(network, address string, c syscall.RawConn) error {
 			_ = c.Control(func(fd uintptr) {
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, bufSize)
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, bufSize)
+				netx.SetBufForTest(fd, bufSize)
 			})
 			return nil
 		},

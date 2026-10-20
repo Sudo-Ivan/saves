@@ -55,12 +55,7 @@ func ListenUDP(ctx context.Context, addr string, bufferBytes int) (net.PacketCon
 		lc.Control = func(network, address string, c syscall.RawConn) error {
 			var serr error
 			_ = c.Control(func(fd uintptr) {
-				if e := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, bufferBytes); e != nil {
-					serr = e
-				}
-				if e := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, bufferBytes); e != nil {
-					serr = e
-				}
+				setBuf(fd, bufferBytes)
 			})
 			return serr
 		}

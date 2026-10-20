@@ -29,6 +29,7 @@ const (
 
 // LogEntry is one ring buffer event.
 type LogEntry struct {
+	ID    int64     `json:"id"`
 	Time  time.Time `json:"time"`
 	Level string    `json:"level"`
 	Game  string    `json:"game"`
@@ -81,6 +82,7 @@ type Daemon struct {
 	mu      sync.Mutex
 	games   map[string]*GameStatus
 	logs    []LogEntry
+	nextLog int64
 	paused  bool
 	reach   atomic.Bool
 	stopC   chan struct{}
@@ -125,11 +127,25 @@ func (d *Daemon) now() time.Time {
 
 func (d *Daemon) log(level, game, msg string) {
 	d.mu.Lock()
-	d.logs = append(d.logs, LogEntry{Time: d.now(), Level: level, Game: game, Msg: msg})
+	d.nextLog++
+	d.logs = append(d.logs, LogEntry{ID: d.nextLog, Time: d.now(), Level: level, Game: game, Msg: msg})
 	if len(d.logs) > 1000 {
 		d.logs = d.logs[len(d.logs)-1000:]
 	}
 	d.mu.Unlock()
+}
+
+// LogsSince returns entries newer than id.
+func (d *Daemon) LogsSince(id int64) []LogEntry {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var out []LogEntry
+	for _, e := range d.logs {
+		if e.ID > id {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // Logs returns recent entries.

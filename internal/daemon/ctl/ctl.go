@@ -118,6 +118,12 @@ func (s *Server) hGames(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(games)
 }
 func (s *Server) hLogs(w http.ResponseWriter, r *http.Request) {
+	if v := r.URL.Query().Get("since"); v != "" {
+		var id int64
+		fmt.Sscanf(v, "%d", &id)
+		json.NewEncoder(w).Encode(s.d.LogsSince(id))
+		return
+	}
 	n := 100
 	fmt.Sscanf(r.URL.Query().Get("n"), "%d", &n)
 	json.NewEncoder(w).Encode(s.d.Logs(n))

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Sudo-Ivan/saves/internal/autostart"
 	"io"
 	"net"
 	"net/http"
@@ -22,11 +23,13 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/daemon"
 	"github.com/Sudo-Ivan/saves/internal/daemon/ctl"
 	"github.com/Sudo-Ivan/saves/internal/detect"
+	"github.com/Sudo-Ivan/saves/internal/notify"
+	"github.com/Sudo-Ivan/saves/internal/tray"
 	"github.com/Sudo-Ivan/saves/pkg/client"
 )
 
 func init() {
-	reg("daemon", "daemon <run|start|stop|status|logs|pause|resume|sync|conflicts|resolve>",
+	reg("daemon", "daemon <run|start|stop|status|logs|pause|resume|sync|conflicts|resolve|install|uninstall|autostart-status>",
 		"manage the background sync daemon",
 		func(ctx context.Context, e *Env, args []string) error { return cmdDaemon(ctx, e, args) })
 }
@@ -163,6 +166,31 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 		}
 		r.Body.Close()
 		return nil
+	case "install", "uninstall", "autostart-status":
+		var c0 common
+		_, paths, _ := c0.loadConfig(e)
+		exe, _ := os.Executable()
+		exe, _ = filepath.EvalSymlinks(exe)
+		spec := autostart.Spec{Target: "daemon", Exe: exe,
+			ConfigDir: paths.Config, StateDir: paths.State,
+			CacheDir: paths.Cache}
+		var err error
+		switch sub {
+		case "install":
+			err = autostart.Install(spec)
+		case "uninstall":
+			err = autostart.Uninstall(spec)
+		default:
+			ok, _ := autostart.Status(spec)
+			fmt.Fprintf(e.Stdout, "autostart daemon=%v\n", ok)
+			ok2, _ := autostart.Status(autostart.Spec{Target: "tray", Exe: exe, ConfigDir: paths.Config})
+			fmt.Fprintf(e.Stdout, "autostart tray=%v\n", ok2)
+			return nil
+		}
+		if err == nil {
+			fmt.Fprintln(e.Stdout, sub+" ok")
+		}
+		return err
 	case "conflicts":
 		r, err := daemonCall(e, "GET", "/conflicts")
 		if err != nil {
@@ -401,4 +429,159 @@ func (ds *daemonSyncer) Sync(ctx context.Context, game, policy string) (daemon.S
 		return res, daemon.ErrConflict
 	}
 	return res, err
+}
+
+// cmdTrayInstall handles savesctl tray install|uninstall.
+func init() {
+	reg("tray", "tray [--no-start-daemon] | tray install|uninstall",
+		"system tray app",
+		func(ctx context.Context, e *Env, args []string) error {
+			if len(args) > 0 && (args[0] == "install" || args[0] == "uninstall") {
+				var c0 common
+				_, paths, _ := c0.loadConfig(e)
+				exe, _ := os.Executable()
+				exe, _ = filepath.EvalSymlinks(exe)
+				spec := autostart.Spec{Target: "tray", Exe: exe, ConfigDir: paths.Config}
+				if args[0] == "install" {
+					return autostart.Install(spec)
+				}
+				return autostart.Uninstall(spec)
+			}
+			return runTray(ctx, e, args)
+		})
+}
+
+// runTray starts the systray app.
+func runTray(ctx context.Context, e *Env, args []string) error {
+	fs := flag.NewFlagSet("tray", flag.ContinueOnError)
+	noStart := fs.Bool("no-start-daemon", false, "")
+	fs.Parse(args)
+	if tray.Headless() {
+		return &ExitError{1, tray.ErrHeadless}
+	}
+	var c0 common
+	_, paths, _ := c0.loadConfig(e)
+	os.MkdirAll(filepath.Join(paths.State, "runtime"), 0o700)
+	release, err := daemonLock(filepath.Join(paths.State, "runtime", "tray.lock"))
+	if err != nil {
+		return err
+	}
+	defer release()
+	if !*noStart {
+		if _, err := daemonCall(e, "GET", "/status"); err != nil {
+			exe, _ := os.Executable()
+			startDetached(e, exe, paths.State)
+		}
+	}
+	ui := tray.SysUI{}
+	var c common
+	cfg, _, _ := c.loadConfig(e)
+	_ = cfg
+	done := make(chan struct{})
+	go func() {
+		// poll /status every 2 s, rebuild menu on change.
+		var last string
+		var lastLogID int64
+		lt := &tray.LogTailer{N: notify.NewDedup(notify.NopNotifier{}), Enabled: true}
+		tick := time.NewTicker(2 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case <-tick.C:
+				lr, lerr := daemonCall(e, "GET",
+					fmt.Sprintf("/logs?since=%d", lastLogID))
+				if lerr == nil {
+					lb, _ := io.ReadAll(lr.Body)
+					lr.Body.Close()
+					var ents []struct {
+						ID    int64  `json:"id"`
+						Level string `json:"level"`
+						Game  string `json:"game"`
+						Msg   string `json:"message"`
+					}
+					if json.Unmarshal(lb, &ents) == nil {
+						for _, le := range ents {
+							lt.Feed(le.Level, le.Game, le.Msg)
+							if le.ID > lastLogID {
+								lastLogID = le.ID
+							}
+						}
+					}
+				}
+				r, err := daemonCall(e, "GET", "/status")
+				if err != nil {
+					continue
+				}
+				b, _ := io.ReadAll(r.Body)
+				r.Body.Close()
+				if string(b) == last {
+					continue
+				}
+				last = string(b)
+				var st struct {
+					Paused bool `json:"paused"`
+					Reach  bool `json:"server_reachable"`
+					Games  map[string]struct {
+						ID, Slot, State, LastError string `json:"-"`
+					} `json:"games"`
+				}
+				var raw map[string]any
+				json.Unmarshal(b, &raw)
+				st.Reach, _ = raw["server_reachable"].(bool)
+				st.Paused, _ = raw["paused"].(bool)
+				var ts tray.Status
+				ts.Running = true
+				ts.Paused = st.Paused
+				ts.ServerReachable = st.Reach
+				ts.Games = map[string]tray.GameState{}
+				if gm, ok := raw["games"].(map[string]any); ok {
+					for k, v := range gm {
+						g := v.(map[string]any)
+						gs := tray.GameState{ID: k}
+						gs.State, _ = g["state"].(string)
+						gs.LastError, _ = g["last_error"].(string)
+						if lc, _ := g["pending_conflict"].(bool); lc {
+							ts.Conflicts = append(ts.Conflicts, k)
+						}
+						ts.Games[k] = gs
+					}
+				}
+				items := tray.BuildMenu(ts)
+				// click handlers
+				tray.Apply(&ui, items, func(id string) {
+					act, game, _ := tray.Click(id)
+					switch act {
+					case "sync":
+						daemonCallBody(e, "POST", "/sync",
+							fmt.Sprintf(`{"game":%q}`, game))
+					case "pause":
+						daemonCallBody(e, "POST", "/pause",
+							fmt.Sprintf(`{"game":%q}`, game))
+					case "resume":
+						daemonCallBody(e, "POST", "/resume",
+							fmt.Sprintf(`{"game":%q}`, game))
+					case "resolve":
+						parts := strings.SplitN(game, ":", 2)
+						if len(parts) == 2 {
+							daemonCallBody(e, "POST", "/conflicts/resolve",
+								fmt.Sprintf(`{"game":%q,"choice":%q}`, parts[0], parts[1]))
+						}
+					case "quit":
+						tray.Quit()
+					case "stop":
+						daemonCall(e, "POST", "/stop")
+					case "start":
+						exe, _ := os.Executable()
+						startDetached(e, exe, paths.State)
+					}
+				})
+			}
+		}
+	}()
+	ui.Run(func() {}, func() { close(done) })
+	return nil
 }

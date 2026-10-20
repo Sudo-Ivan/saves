@@ -239,3 +239,22 @@ func FuzzValidateSlotName(f *testing.F) {
 		_ = ValidateSlotName(s)
 	})
 }
+
+// ChunkSlack: sealed chunks may exceed max_chunk_bytes by up to 64.
+func TestChunkSlack(t *testing.T) {
+	limSlack := DefaultLimits()
+	limSlack.MaxChunkBytes = 2 << 20
+	var m Manifest
+	m.Version = 1
+	sz := int64((2 << 20) + 40)
+	m.Files = []File{{Path: "a", Size: sz, Mode: 0o600,
+		Chunks: []ChunkRef{{Hash: HashBytes([]byte("x")), Size: uint32(sz)}}}}
+	if err := m.Validate(limSlack); err != nil {
+		t.Fatalf("sealed +40 rejected: %v", err)
+	}
+	m.Files[0].Chunks[0].Size = uint32((2 << 20) + 65)
+	m.Files[0].Size = int64((2 << 20) + 65)
+	if err := m.Validate(limSlack); err == nil {
+		t.Fatal("max+65 accepted")
+	}
+}

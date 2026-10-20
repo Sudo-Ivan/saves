@@ -47,6 +47,10 @@ type Manifest struct {
 	Files   []File   `json:"files" doc:"sorted unique file entries"`
 }
 
+// ChunkSlack is extra room above max_chunk_bytes that sealed chunks need for
+// their nonce and authentication tag.
+const ChunkSlack = 64
+
 // Limits bounds what a manifest may declare.
 type Limits struct {
 	InlineMaxBytes       int64 `json:"inline_max_bytes" doc:"largest file allowed to carry Inline content"`
@@ -214,7 +218,7 @@ func validateFileBody(f *File, lim Limits) error {
 	var sum int64
 	for i, c := range f.Chunks {
 		sum += int64(c.Size)
-		if int64(c.Size) > lim.MaxChunkBytes {
+		if int64(c.Size) > lim.MaxChunkBytes+ChunkSlack {
 			return fmt.Errorf("manifest: file %q: chunk %d size %d exceeds max_chunk_bytes %d", f.Path, i, c.Size, lim.MaxChunkBytes)
 		}
 		if i < n-1 && int64(c.Size) < lim.MinChunkBytes {

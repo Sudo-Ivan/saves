@@ -38,14 +38,18 @@ type Plan struct {
 
 // Plan inspects local vs remote without mutating anything.
 func (c *Client) Plan(ctx context.Context, app, slot string, src Source, st StateStore) (*Plan, error) {
+	return c.PlanFrom(ctx, c.remote(), app, slot, src, st)
+}
+
+// PlanFrom plans against an arbitrary Remote.
+func (c *Client) PlanFrom(ctx context.Context, r Remote, app, slot string, src Source, st StateStore) (*Plan, error) {
 	prev, err := st.Load(app, slot)
 	if err != nil {
 		return nil, err
 	}
-	var head string
-	for s := range mustIter(c.ListSnapshots(ctx, app, slot)) {
-		head = s.ID
-		break
+	head, err := r.Head(ctx, app, slot)
+	if err != nil {
+		return nil, err
 	}
 	p := &Plan{RemoteHead: head}
 	if head == "" {
@@ -95,7 +99,7 @@ func (c *Client) Plan(ctx context.Context, app, slot string, src Source, st Stat
 			}
 		}
 	}
-	if m, err := c.GetManifest(ctx, app, slot, head); err == nil && m != nil {
+	if m, err := r.Manifest(ctx, app, slot, head); err == nil && m != nil {
 		for _, f := range m.Files {
 			if f.ModTimeNS > p.RemoteNewest {
 				p.RemoteNewest = f.ModTimeNS

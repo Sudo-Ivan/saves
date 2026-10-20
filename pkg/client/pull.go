@@ -94,6 +94,11 @@ func writeFile(r *os.Root, rel string, data func(w io.Writer) error, mode uint32
 
 // Pull restores a snapshot into the source roots.
 func (c *Client) Pull(ctx context.Context, app, slot, snapshot string, src Source, st StateStore, opt PullOptions) (*PullResult, error) {
+	return c.PullFrom(ctx, c.remote(), app, slot, snapshot, src, st, opt)
+}
+
+// PullFrom pulls from an arbitrary Remote (server or peer).
+func (c *Client) PullFrom(ctx context.Context, r Remote, app, slot, snapshot string, src Source, st StateStore, opt PullOptions) (*PullResult, error) {
 	if err := src.Validate(); err != nil {
 		return nil, err
 	}
@@ -105,12 +110,19 @@ func (c *Client) Pull(ctx context.Context, app, slot, snapshot string, src Sourc
 	if snapshot == "" {
 		snapshot = "latest"
 	}
-	m, err := c.GetManifest(ctx, app, slot, snapshot)
+	if snapshot == "" {
+		h, err := r.Head(ctx, app, slot)
+		if err != nil {
+			return nil, err
+		}
+		snapshot = h
+	}
+	m, err := r.Manifest(ctx, app, slot, snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("manifest: %w", err)
 	}
 	if m != nil && m.Enc != nil {
-		return c.encPull(ctx, app, slot, snapshot, m, src, st, opt)
+		return c.encPullFrom(ctx, r, app, slot, snapshot, m, src, st, opt)
 	}
 	if m != nil && m.Enc == nil && c.cfg.Cipher != nil {
 		// Plaintext snapshot: still pullable with a cipher configured.

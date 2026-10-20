@@ -11,12 +11,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/Sudo-Ivan/saves/internal/clicfg"
 	"github.com/Sudo-Ivan/saves/internal/netx"
 	"github.com/Sudo-Ivan/saves/pkg/client"
+	"strings"
 )
 
 // Exit codes.
@@ -112,6 +114,14 @@ func (e *Env) clientFor(cfg *clicfg.Config) (*client.Client, error) {
 		Concurrency: cfg.Concurrency,
 		HTTP:        &http.Client{Transport: netx.NewTransport()},
 	}
+	if strings.HasPrefix(cfg.Server, "p2p://") {
+		rt, err := p2pTransport(e.Paths.Config, strings.TrimPrefix(cfg.Server, "p2p://"))
+		if err != nil {
+			return nil, err
+		}
+		cc.BaseURL = "https://p2p.invalid"
+		cc.HTTP = &http.Client{Transport: rt}
+	}
 	v, err := cipherFor(context.Background(), e, cfg)
 	if err != nil {
 		return nil, &ExitError{ExAuth, err}
@@ -135,6 +145,14 @@ func (e *Env) clientPlain(cfg *clicfg.Config) (*client.Client, error) {
 		BaseURL: cfg.Server, Token: cfg.Token,
 		Concurrency: cfg.Concurrency,
 		HTTP:        &http.Client{Transport: netx.NewTransport()},
+	}
+	if strings.HasPrefix(cfg.Server, "p2p://") {
+		rt, err := p2pTransport(e.Paths.Config, strings.TrimPrefix(cfg.Server, "p2p://"))
+		if err != nil {
+			return nil, err
+		}
+		cc.BaseURL = "https://p2p.invalid"
+		cc.HTTP = &http.Client{Transport: rt}
 	}
 	return client.New(cc)
 }
@@ -218,4 +236,25 @@ func helpText() string {
 		s += "  " + registry[n].Usage + "\n"
 	}
 	return s
+}
+
+// parseArgs parses flags that may appear before, between or after
+// positional arguments. A literal "--" ends flag parsing as usual.
+func parseArgs(fs *flag.FlagSet, args []string) error {
+	if slices.Contains(args, "--") {
+		return fs.Parse(args)
+	}
+	var pos []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		pos = append(pos, rest[0])
+		args = rest[1:]
+	}
+	return fs.Parse(append([]string{"--"}, pos...))
 }

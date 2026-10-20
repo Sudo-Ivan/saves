@@ -111,8 +111,17 @@ func (c *Config) daemonDefaults() {
 }
 
 // Config is config.json.
+// P2PCfg is the peer section.
+type P2PCfg struct {
+	Enabled bool   `json:"enabled"`
+	Listen  string `json:"listen"`
+	HostDir string `json:"host_dir"`
+	Name    string `json:"name"`
+}
+
 type Config struct {
 	Server         string    `json:"server"`
+	P2P            P2PCfg    `json:"p2p"`
 	Token          string    `json:"token,omitempty"`
 	TokenFile      string    `json:"token_file,omitempty"`
 	TokenEnv       string    `json:"token_env,omitempty"`

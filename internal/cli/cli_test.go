@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"flag"
 	"strings"
 	"testing"
 
@@ -112,4 +113,21 @@ func FuzzParseGameRef(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestParseArgsInterspersed(t *testing.T) {
+	fs := flag.NewFlagSet("x", flag.ContinueOnError)
+	j := fs.Bool("json", false, "")
+	l := fs.String("label", "", "")
+	if err := parseArgs(fs, []string{"a", "--json", "b", "--label", "L", "c"}); err != nil {
+		t.Fatal(err)
+	}
+	if !*j || *l != "L" || fs.NArg() != 3 || fs.Arg(0) != "a" || fs.Arg(2) != "c" {
+		t.Fatalf("json=%v label=%q args=%v", *j, *l, fs.Args())
+	}
+	fs = flag.NewFlagSet("x", flag.ContinueOnError)
+	fs.Bool("json", false, "")
+	if err := parseArgs(fs, []string{"--", "--json"}); err != nil || fs.NArg() != 1 {
+		t.Fatalf("terminator: %v %v", err, fs.Args())
+	}
 }

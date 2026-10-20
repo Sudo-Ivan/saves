@@ -283,7 +283,7 @@ func (s *Service) PutChunk(ctx context.Context, p auth.Principal, app, slot, sna
 	if err != nil {
 		return mapErr(meta.ErrNotFound)
 	}
-	if eff.APILimits.MaxChunkBytes > 0 && size > eff.APILimits.MaxChunkBytes {
+	if eff.APILimits.MaxChunkBytes > 0 && size > eff.APILimits.MaxChunkBytes+api.ChunkSlack {
 		return &api.Problem{Code: api.CodeTooLarge, Title: "chunk too large", Status: 413}
 	}
 	if size < 0 {

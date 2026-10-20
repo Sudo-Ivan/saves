@@ -29,7 +29,7 @@ func cmdLogin(ctx context.Context, e *Env, args []string) error {
 	c.add(fs)
 	reg := fs.Bool("register", false, "register new account")
 	invite := fs.String("invite", "", "invite code")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("login: %v", err)
 	}
 	cfg, paths, err := c.loadConfig(e)
@@ -72,7 +72,7 @@ func cmdLogout(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("logout", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("logout: %v", err)
 	}
 	cfg, paths, err := c.loadConfig(e)
@@ -91,7 +91,7 @@ func cmdMe(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("me", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("me: %v", err)
 	}
 	cfg, _, err := c.loadConfig(e)

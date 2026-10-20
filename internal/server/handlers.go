@@ -250,7 +250,7 @@ func (s *Server) hPutChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lim := s.Cfg.Limits.MaxChunkBytes.Int64()
-	if lim > 0 && r.ContentLength > lim {
+	if lim > 0 && r.ContentLength > lim+api.ChunkSlack {
 		s.writeProblem(w, r, &api.Problem{Code: api.CodeTooLarge, Title: "chunk too large", Status: 413})
 		return
 	}

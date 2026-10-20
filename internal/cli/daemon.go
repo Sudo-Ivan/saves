@@ -84,7 +84,7 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("daemon "+sub, flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := parseArgs(fs, args[1:]); err != nil {
 		return usagef("daemon: %v", err)
 	}
 	switch sub {
@@ -455,7 +455,7 @@ func init() {
 func runTray(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("tray", flag.ContinueOnError)
 	noStart := fs.Bool("no-start-daemon", false, "")
-	fs.Parse(args)
+	parseArgs(fs, args)
 	if tray.Headless() {
 		return &ExitError{1, tray.ErrHeadless}
 	}

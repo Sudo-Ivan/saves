@@ -55,7 +55,7 @@ func cmdSetup(ctx context.Context, e *Env, args []string) error {
 	name := fs.String("device-name", "", "device name")
 	register := fs.Bool("register", false, "register")
 	trackAll := fs.Bool("track-all", false, "track detected games")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("setup: %v", err)
 	}
 	cfg, paths, err := c.loadConfig(e)
@@ -127,7 +127,7 @@ func cmdGames(ctx context.Context, e *Env, args []string) error {
 	known := fs.Bool("known-only", false, "only games with save locations")
 	_ = fs.Bool("locked", false, "")
 	_ = fs.Bool("include-config", false, "")
-	if err := fs.Parse(rest); err != nil {
+	if err := parseArgs(fs, rest); err != nil {
 		return usagef("games: %v", err)
 	}
 	_ = fs.Args()
@@ -217,7 +217,7 @@ func cmdTrack(ctx context.Context, e *Env, args []string) error {
 	app := fs.String("app", "", "manual app id")
 	slot := fs.String("slot", "default", "slot")
 	key := fs.String("key", "save", "root key")
-	if err := fs.Parse(rest); err != nil {
+	if err := parseArgs(fs, rest); err != nil {
 		return usagef("track: %v", err)
 	}
 	rest = fs.Args()
@@ -417,7 +417,7 @@ func cmdStatus(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("status: %v", err)
 	}
 	cfg, paths, err := c.loadConfig(e)
@@ -454,7 +454,7 @@ func cmdSyncOp(op string) func(context.Context, *Env, []string) error {
 		all := fs.Bool("all", false, "all tracked")
 		oc := fs.String("on-conflict", "", "conflict strategy: ask|keep-local|keep-remote|keep-newest|fail")
 		forceLocked := fs.Bool("force-locked", false, "push locked worlds anyway")
-		if err := fs.Parse(args); err != nil {
+		if err := parseArgs(fs, args); err != nil {
 			return usagef(op+": %v", err)
 		}
 		cfg, paths, err := c.loadConfig(e)
@@ -616,7 +616,7 @@ func cmdSnapshots(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("snapshots", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("snapshots: %v", err)
 	}
 	if fs.NArg() < 1 {
@@ -643,7 +643,7 @@ func cmdRestore(ctx context.Context, e *Env, args []string) error {
 	c.add(fs)
 	snap := fs.String("snapshot", "", "snapshot id")
 	to := fs.String("to", "", "target dir")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("restore: %v", err)
 	}
 	if fs.NArg() < 1 {
@@ -676,7 +676,7 @@ func cmdDeleteSnapshot(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("delete-snapshot", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil || fs.NArg() < 2 {
+	if err := parseArgs(fs, args); err != nil || fs.NArg() < 2 {
 		return usagef("delete-snapshot <game> <id>")
 	}
 	cfg, _, err := c.loadConfig(e)
@@ -698,7 +698,7 @@ func cmdDeleteSlot(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("delete-slot", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil || fs.NArg() < 2 {
+	if err := parseArgs(fs, args); err != nil || fs.NArg() < 2 {
 		return usagef("delete-slot <app> <slot>")
 	}
 	cfg, _, err := c.loadConfig(e)
@@ -719,7 +719,7 @@ func cmdBackups(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("backups", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("backups: %v", err)
 	}
 	_, paths, err := c.loadConfig(e)
@@ -844,7 +844,7 @@ func cmdDoctor(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	var c common
 	c.add(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return usagef("doctor: %v", err)
 	}
 	cfg, paths, err := c.loadConfig(e)

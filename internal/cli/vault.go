@@ -68,7 +68,7 @@ func cmdVault(ctx context.Context, e *Env, args []string) error {
 	rec := fs.String("recovery", "", "recovery key")
 	recFile := fs.String("recovery-file", "", "write recovery key here")
 	j := &c.json
-	if err := fs.Parse(rest); err != nil {
+	if err := parseArgs(fs, rest); err != nil {
 		return usagef("vault %s: %v", sub, err)
 	}
 	cfg, paths, err := c.loadConfig(e)

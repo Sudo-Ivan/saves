@@ -266,7 +266,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 }
 
 // encPull decrypts an encrypted snapshot.
-func (c *Client) encPull(ctx context.Context, app, slot, snapshot string, m *api.Manifest, src Source, st StateStore, opt PullOptions) (*PullResult, error) {
+func (c *Client) encPullFrom(ctx context.Context, rem Remote, app, slot, snapshot string, m *api.Manifest, src Source, st StateStore, opt PullOptions) (*PullResult, error) {
 	if c.cfg.Cipher == nil {
 		return nil, &EncryptedError{Hint: "no vault key configured"}
 	}
@@ -287,7 +287,12 @@ func (c *Client) encPull(ctx context.Context, app, slot, snapshot string, m *api
 		mct = metaf.Inline
 	} else {
 		for _, r := range metaf.Chunks {
-			b, err := c.chunk(ctx, app, r.Hash)
+			rc, err := rem.Chunk(ctx, app, r.Hash, 0, int64(r.Size))
+			if err != nil {
+				return nil, err
+			}
+			b, err := io.ReadAll(rc)
+			rc.Close()
 			if err != nil {
 				return nil, err
 			}
@@ -341,7 +346,12 @@ func (c *Client) encPull(ctx context.Context, app, slot, snapshot string, m *api
 			plain = b
 		} else {
 			for _, r := range dst.Chunks {
-				b, err := c.chunk(ctx, app, r.Hash)
+				rc, err := rem.Chunk(ctx, app, r.Hash, 0, int64(r.Size))
+				if err != nil {
+					return nil, err
+				}
+				b, err := io.ReadAll(rc)
+				rc.Close()
 				if err != nil {
 					return nil, err
 				}

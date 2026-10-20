@@ -118,6 +118,52 @@ func (s *Store) wtx1(ctx context.Context, fn func(q q) error) error {
 	return nil
 }
 
+// GetVault implements meta.Store.
+func (s *Store) GetVault(ctx context.Context, userID string) (meta.VaultRecord, error) {
+	var r meta.VaultRecord
+	err := s.r.QueryRowContext(ctx,
+		"SELECT header, kid, version FROM vault WHERE user_id = ?", userID).
+		Scan(&r.Header, &r.KID, &r.Version)
+	if err != nil {
+		return r, meta.ErrNotFound
+	}
+	return r, nil
+}
+
+// PutVault implements meta.Store.
+func (s *Store) PutVault(ctx context.Context, userID string, header []byte, kid string, ifVersion *int64) (int64, error) {
+	if len(header) > 8192 {
+		return 0, fmt.Errorf("meta: vault header too large")
+	}
+	now := time.Now().UnixNano()
+	if ifVersion == nil {
+		_, err := s.w.ExecContext(ctx,
+			"INSERT INTO vault (user_id, header, kid, version, updated_at) VALUES (?, ?, ?, 1, ?)",
+			userID, header, kid, now)
+		if err != nil {
+			return 0, meta.ErrVersionMismatch
+		}
+		return 1, nil
+	}
+	res, err := s.w.ExecContext(ctx,
+		"UPDATE vault SET header = ?, kid = ?, version = version + 1, updated_at = ? WHERE user_id = ? AND version = ?",
+		header, kid, now, userID, *ifVersion)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return 0, meta.ErrVersionMismatch
+	}
+	return *ifVersion + 1, nil
+}
+
+// DeleteVault implements meta.Store.
+func (s *Store) DeleteVault(ctx context.Context, userID string) error {
+	_, err := s.w.ExecContext(ctx, "DELETE FROM vault WHERE user_id = ?", userID)
+	return err
+}
+
 // Migrate applies embedded migrations in order.
 func (s *Store) Migrate(ctx context.Context) error {
 	var files []string

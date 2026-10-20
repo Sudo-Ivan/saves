@@ -29,9 +29,17 @@ type File struct {
 	Inline    []byte     `json:"inline,omitempty" doc:"whole file content when small enough, base64 in JSON"`
 }
 
+// EncInfo marks an end-to-end encrypted snapshot.
+type EncInfo struct {
+	V   int    `json:"v" doc:"encryption format version, always 1"`
+	Alg string `json:"alg" doc:"cipher suite, e.g. xchacha20poly1305-siv-v1"`
+	KID string `json:"kid" doc:"16 hex char key id"`
+}
+
 // Manifest is the immutable content listing of one snapshot.
 type Manifest struct {
 	Version int      `json:"version" doc:"manifest format version, always 1"`
+	Enc     *EncInfo `json:"enc,omitempty" doc:"encryption marker for vault snapshots"`
 	Parent  string   `json:"parent,omitempty" doc:"previous snapshot id, informational"`
 	Device  string   `json:"device,omitempty" doc:"originating device label"`
 	Label   string   `json:"label,omitempty" doc:"human readable snapshot label"`
@@ -71,6 +79,11 @@ func DefaultLimits() Limits {
 func (m *Manifest) Validate(lim Limits) error {
 	if m.Version != 1 {
 		return fmt.Errorf("manifest: unsupported version %d", m.Version)
+	}
+	if m.Enc != nil {
+		if err := m.validateEnc(); err != nil {
+			return err
+		}
 	}
 	if len(m.Files) > lim.MaxFiles {
 		return fmt.Errorf("manifest: %d files exceeds max_files %d", len(m.Files), lim.MaxFiles)
@@ -138,6 +151,44 @@ func checkNoDirPrefix(path string, i int, files []File) error {
 		}
 	}
 	return nil
+}
+
+// validateEnc enforces the opaque shape of encrypted manifests.
+func (m *Manifest) validateEnc() error {
+	if m.Enc.V != 1 || (m.Enc.Alg != "xchacha20poly1305-siv-v1") {
+		return fmt.Errorf("manifest: enc: bad version or alg")
+	}
+	if len(m.Enc.KID) != 16 || !isLowerHex(m.Enc.KID) {
+		return fmt.Errorf("manifest: enc: bad kid")
+	}
+	if len(m.Dirs) > 0 {
+		return fmt.Errorf("manifest: enc: dirs must be empty")
+	}
+	metaCount := 0
+	for i := range m.Files {
+		f := &m.Files[i]
+		if f.Path == "meta" {
+			metaCount++
+		} else if len(f.Path) != 32 || !isLowerHex(f.Path) {
+			return fmt.Errorf("manifest: enc: path %q not an opaque id", f.Path)
+		}
+		if f.Mode != 0o600 || f.ModTimeNS != 0 {
+			return fmt.Errorf("manifest: enc: mode/mtime must be zeroed")
+		}
+	}
+	if metaCount != 1 {
+		return fmt.Errorf("manifest: enc: exactly one meta file required, got %d", metaCount)
+	}
+	return nil
+}
+
+func isLowerHex(s string) bool {
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func validateFileBody(f *File, lim Limits) error {

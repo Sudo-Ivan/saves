@@ -1500,3 +1500,48 @@ func (s *Store) Fsck(ctx context.Context, repair bool) (meta.FsckReport, error) 
 	})
 	return rep, err
 }
+
+// GetVault implements meta.Store.
+func (s *Store) GetVault(ctx context.Context, userID string) (meta.VaultRecord, error) {
+	var r meta.VaultRecord
+	err := s.pool.QueryRow(ctx,
+		"SELECT header, kid, version FROM vault WHERE user_id = $1", userID).
+		Scan(&r.Header, &r.KID, &r.Version)
+	if err != nil {
+		return r, meta.ErrNotFound
+	}
+	return r, nil
+}
+
+// PutVault implements meta.Store.
+func (s *Store) PutVault(ctx context.Context, userID string, header []byte, kid string, ifVersion *int64) (int64, error) {
+	if len(header) > 8192 {
+		return 0, fmt.Errorf("meta: vault header too large")
+	}
+	now := time.Now().UnixNano()
+	if ifVersion == nil {
+		_, err := s.pool.Exec(ctx,
+			"INSERT INTO vault (user_id, header, kid, version, updated_at) VALUES ($1, $2, $3, 1, $4)",
+			userID, header, kid, now)
+		if err != nil {
+			return 0, meta.ErrVersionMismatch
+		}
+		return 1, nil
+	}
+	res, err := s.pool.Exec(ctx,
+		"UPDATE vault SET header = $1, kid = $2, version = version + 1, updated_at = $3 WHERE user_id = $4 AND version = $5",
+		header, kid, now, userID, *ifVersion)
+	if err != nil {
+		return 0, err
+	}
+	if res.RowsAffected() == 0 {
+		return 0, meta.ErrVersionMismatch
+	}
+	return *ifVersion + 1, nil
+}
+
+// DeleteVault implements meta.Store.
+func (s *Store) DeleteVault(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, "DELETE FROM vault WHERE user_id = $1", userID)
+	return err
+}

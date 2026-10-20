@@ -1,0 +1,23 @@
+{
+  "kid": "3e1b26e5dff4fbda",
+  "vectors": [
+    {
+      "Path": "save/f",
+      "PathID": "0f18edd982b7f3131fbb411984da903b",
+      "Plain": "save/f",
+      "CT": "1c802681a940d40949fd473000df429b78608f5026a92b48c03d3ec6e477da25626eccd07ed607fa9379b42285c2"
+    },
+    {
+      "Path": "a.dat",
+      "PathID": "d63aa973c507f615d46b8f05748e267a",
+      "Plain": "a.dat",
+      "CT": "9480515dba46feddf7e25583e694de39dff409835b3cf3f4f04ef1fc2885fb76a84ac679dee7afc4b3a608f8c7"
+    },
+    {
+      "Path": "",
+      "PathID": "ba10e606ce932e1baa321743f2c8a74a",
+      "Plain": "",
+      "CT": "8564b9b55e93de6fe062a1c79b73d50370bb994e33994c04829b74a9aac5cad8de6260e1546e4fc5"
+    }
+  ]
+}

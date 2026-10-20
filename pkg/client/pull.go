@@ -109,6 +109,12 @@ func (c *Client) Pull(ctx context.Context, app, slot, snapshot string, src Sourc
 	if err != nil {
 		return nil, fmt.Errorf("manifest: %w", err)
 	}
+	if m != nil && m.Enc != nil {
+		return c.encPull(ctx, app, slot, snapshot, m, src, st, opt)
+	}
+	if m != nil && m.Enc == nil && c.cfg.Cipher != nil {
+		// Plaintext snapshot: still pullable with a cipher configured.
+	}
 	prev, err := st.Load(app, slot)
 	if err != nil {
 		return nil, err

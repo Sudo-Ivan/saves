@@ -69,6 +69,11 @@ type Store interface {
 	ListTokens(ctx context.Context, userID string) ([]Token, error)
 	RevokeToken(ctx context.Context, id string) error
 
+	// Vault header record, one per user.
+	GetVault(ctx context.Context, userID string) (VaultRecord, error)
+	PutVault(ctx context.Context, userID string, header []byte, kid string, ifVersion *int64) (int64, error)
+	DeleteVault(ctx context.Context, userID string) error
+
 	// BeginSnapshot atomically upserts the slot, inserts the pending
 	// snapshot plus chunk references, computes the missing set, and
 	// reserves quota.
@@ -280,6 +285,16 @@ type FsckReport struct {
 	UsageFixed int
 	OrphanRefs int
 }
+
+// VaultRecord is one per-user vault header.
+type VaultRecord struct {
+	Header  []byte
+	KID     string
+	Version int64
+}
+
+// ErrVersionMismatch fires when an If-Match version is stale.
+var ErrVersionMismatch = errors.New("meta: vault version mismatch")
 
 var (
 	ErrNotFound     = errors.New("meta: not found")

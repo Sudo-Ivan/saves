@@ -200,6 +200,7 @@ type Tier struct {
 	Retention            RetentionPolicy `json:"retention" doc:"snapshot retention"`
 	Rate                 RateLimit       `json:"rate" doc:"per principal request rate"`
 	MaxConcurrentUploads int             `json:"max_concurrent_uploads" doc:"parallel chunk uploads per principal"`
+	RequireEncryption    *bool           `json:"require_encryption,omitempty" doc:"require vault encrypted manifests"`
 }
 
 // RetentionPolicy controls snapshot pruning.
@@ -236,6 +237,7 @@ type LimitsConfig struct {
 	MaxSnapshotBytes     Size `json:"max_snapshot_bytes" doc:"global largest summed file sizes"`
 	MaxManifestBytes     Size `json:"max_manifest_bytes" doc:"largest accepted manifest body"`
 	ManifestCacheBytes   Size `json:"manifest_cache_bytes" doc:"decoded manifest cache size per process, 0 disables"`
+	RequireEncryption    bool `json:"require_encryption" doc:"require vault encrypted manifests for all snapshots"`
 	MaxPathDepth         int  `json:"max_path_depth" doc:"deepest allowed path component count"`
 	MaxConcurrentUploads int  `json:"max_concurrent_uploads" doc:"global parallel chunk upload cap"`
 }

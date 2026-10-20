@@ -146,6 +146,12 @@ func mapErr(err error) error {
 }
 
 // Me returns the caller identity and usage.
+// RequireEncryption reports whether new snapshots must be encrypted.
+func (s *Service) RequireEncryption(ctx context.Context, p auth.Principal) bool {
+	e, err := s.eff(p, "")
+	return err == nil && e.RequireEncryption
+}
+
 func (s *Service) Me(ctx context.Context, p auth.Principal) (meta.User, meta.Usage, error) {
 	u, err := s.Meta.Usage(ctx, p.User.ID)
 	return p.User, u, mapErr(err)
@@ -420,6 +426,10 @@ func (s *Service) OpenFile(ctx context.Context, p auth.Principal, app, slot, id,
 	if err != nil {
 		return nil, err
 	}
+	if m.Enc != nil {
+		return nil, &api.Problem{Code: api.CodeEncrypted,
+			Title: "snapshot is encrypted; use client pull", Status: 409}
+	}
 	for _, f := range m.Files {
 		if f.Path != path {
 			continue
@@ -461,4 +471,22 @@ func (s *Service) OpenChunk(ctx context.Context, p auth.Principal, app string, h
 		return nil, mapErr(meta.ErrNotFound)
 	}
 	return o, err
+}
+
+// GetVault returns the stored vault header.
+func (s *Service) GetVault(ctx context.Context, p auth.Principal) (meta.VaultRecord, error) {
+	return s.Meta.GetVault(ctx, p.User.ID)
+}
+
+// PutVault CASes the vault header.
+func (s *Service) PutVault(ctx context.Context, p auth.Principal, header []byte, kid string, ifVersion *int64) (int64, error) {
+	if len(header) > 8192 {
+		return 0, &api.Problem{Code: api.CodeTooLarge, Title: "vault header too large", Status: 413}
+	}
+	return s.Meta.PutVault(ctx, p.User.ID, header, kid, ifVersion)
+}
+
+// DeleteVault removes the vault header.
+func (s *Service) DeleteVault(ctx context.Context, p auth.Principal) error {
+	return s.Meta.DeleteVault(ctx, p.User.ID)
 }

@@ -107,11 +107,36 @@ func (e *Env) clientFor(cfg *clicfg.Config) (*client.Client, error) {
 	if cfg.Server == "" {
 		return nil, &ExitError{ExAuth, errors.New("no server configured; run savesctl setup")}
 	}
-	return client.New(client.Config{
+	cc := client.Config{
 		BaseURL: cfg.Server, Token: cfg.Token,
 		Concurrency: cfg.Concurrency,
 		HTTP:        &http.Client{Transport: netx.NewTransport()},
-	})
+	}
+	v, err := cipherFor(context.Background(), e, cfg)
+	if err != nil {
+		return nil, &ExitError{ExAuth, err}
+	}
+	if v != nil {
+		cc.Cipher = v
+	}
+	return client.New(cc)
+}
+
+// clientPlain builds a client without the vault cipher; used by
+// vault management commands that must work before a key is cached.
+func (e *Env) clientPlain(cfg *clicfg.Config) (*client.Client, error) {
+	if e.Client != nil {
+		return e.Client(*cfg)
+	}
+	if cfg.Server == "" {
+		return nil, &ExitError{ExAuth, errors.New("no server configured; run savesctl setup")}
+	}
+	cc := client.Config{
+		BaseURL: cfg.Server, Token: cfg.Token,
+		Concurrency: cfg.Concurrency,
+		HTTP:        &http.Client{Transport: netx.NewTransport()},
+	}
+	return client.New(cc)
 }
 
 // Cmd is a registered command.

@@ -37,6 +37,8 @@ type Config struct {
 	Retries        int
 	// HTTP3 forces HTTP/3 transport.
 	HTTP3 bool
+	// Cipher enables vault encryption (pkg/vault).
+	Cipher Cipher
 }
 
 // Client talks to a saves server.
@@ -215,6 +217,9 @@ func (c *Client) decode(resp *http.Response, v any) error {
 		if p.Code == api.CodeQuotaExceeded || resp.StatusCode == 413 {
 			return &QuotaError{APIError{Status: resp.StatusCode, Code: p.Code, Detail: p.Detail}}
 		}
+		if p.Code == api.CodeEncryptionRequired {
+			return &EncryptionRequiredError{}
+		}
 		return &APIError{Status: resp.StatusCode, Code: p.Code, Detail: p.Detail}
 	}
 	if v == nil {
@@ -239,11 +244,12 @@ func (c *Client) Me(ctx context.Context) (*MeOut, error) {
 
 // MeOut is the /v1/me response.
 type MeOut struct {
-	User      json.RawMessage `json:"user"`
-	Tier      string          `json:"tier"`
-	Usage     json.RawMessage `json:"usage"`
-	Scopes    string          `json:"scopes"`
-	Anonymous bool            `json:"anonymous"`
+	User              json.RawMessage `json:"user"`
+	Tier              string          `json:"tier"`
+	Usage             json.RawMessage `json:"usage"`
+	Scopes            string          `json:"scopes"`
+	Anonymous         bool            `json:"anonymous"`
+	RequireEncryption bool            `json:"require_encryption"`
 }
 
 // ListApps lists apps.

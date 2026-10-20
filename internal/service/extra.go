@@ -28,6 +28,10 @@ func (s *Service) WriteArchive(ctx context.Context, p auth.Principal, app, slot,
 	if err != nil {
 		return err
 	}
+	if m.Enc != nil {
+		return &api.Problem{Code: api.CodeEncrypted,
+			Title: "snapshot is encrypted; use client pull", Status: 409}
+	}
 	tw := tar.NewWriter(w)
 	defer tw.Close()
 	for _, d := range m.Dirs {
@@ -84,7 +88,15 @@ func (s *Service) Diff(ctx context.Context, p auth.Principal, app, slot, idA, id
 		if err != nil {
 			return nil, err
 		}
-		return api.DecodeManifest(bytes.NewReader(b), int64(len(b))+1)
+		m, err := api.DecodeManifest(bytes.NewReader(b), int64(len(b))+1)
+		if err != nil {
+			return nil, err
+		}
+		if m.Enc != nil {
+			return nil, &api.Problem{Code: api.CodeEncrypted,
+				Title: "snapshot is encrypted; use client pull", Status: 409}
+		}
+		return m, nil
 	}
 	ma, err := load(idA)
 	if err != nil {

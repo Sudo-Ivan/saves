@@ -19,6 +19,7 @@ type FileEntry struct {
 	Mode       uint32         `json:"mode"`
 	Chunks     []api.ChunkRef `json:"chunks,omitempty"`
 	Inline     bool           `json:"inline,omitempty"`
+	SealedSize int64          `json:"sealed_size,omitempty"`
 	InlineHash api.Hash       `json:"inline_hash,omitempty"`
 }
 
@@ -29,6 +30,9 @@ type State struct {
 	LastManifestHash api.Hash             `json:"manifest_hash"`
 	FileSig          string               `json:"file_sig,omitempty"`
 	FileCache        map[string]FileEntry `json:"files,omitempty"`
+	// ContentSig is a deterministic hash over the plaintext tree for
+	// encrypted slots, used to skip unchanged pushes.
+	ContentSig string `json:"content_sig,omitempty"`
 }
 
 // StateStore persists per-slot state outside the save dirs.

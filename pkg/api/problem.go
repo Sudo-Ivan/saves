@@ -9,16 +9,18 @@ import (
 
 // Problem codes carried in the stable code member of problem responses.
 const (
-	CodeConflict        = "conflict"
-	CodeQuotaExceeded   = "quota_exceeded"
-	CodeRateLimited     = "rate_limited"
-	CodeInvalidManifest = "invalid_manifest"
-	CodeNotFound        = "not_found"
-	CodeUnauthorized    = "unauthorized"
-	CodeForbidden       = "forbidden"
-	CodeTooLarge        = "too_large"
-	CodeBadRequest      = "bad_request"
-	CodeInternal        = "internal"
+	CodeConflict           = "conflict"
+	CodeEncrypted          = "encrypted"
+	CodeEncryptionRequired = "encryption_required"
+	CodeQuotaExceeded      = "quota_exceeded"
+	CodeRateLimited        = "rate_limited"
+	CodeInvalidManifest    = "invalid_manifest"
+	CodeNotFound           = "not_found"
+	CodeUnauthorized       = "unauthorized"
+	CodeForbidden          = "forbidden"
+	CodeTooLarge           = "too_large"
+	CodeBadRequest         = "bad_request"
+	CodeInternal           = "internal"
 )
 
 // Problem is an RFC 9457 application/problem+json body with a stable

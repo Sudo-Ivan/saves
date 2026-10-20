@@ -32,6 +32,7 @@ func (r *Resolver) Reload(cfg *config.Config) { r.cfg.Store(cfg) }
 
 // Effective is the resolved limit set for one request.
 type Effective struct {
+	RequireEncryption    bool
 	QuotaBytes           int64
 	MaxSlots             int
 	MaxPendingSnapshots  int
@@ -62,6 +63,7 @@ func (r *Resolver) For(u meta.User, appID string, anonymous bool) (Effective, er
 		t = q.Tiers[q.DefaultTier]
 	}
 	e := Effective{
+		RequireEncryption:    c.Limits.RequireEncryption,
 		QuotaBytes:           t.QuotaBytes.Int64(),
 		MaxSlots:             t.MaxSlots,
 		MaxPendingSnapshots:  t.MaxPendingSnapshots,
@@ -71,6 +73,10 @@ func (r *Resolver) For(u meta.User, appID string, anonymous bool) (Effective, er
 		Burst:                t.Rate.Burst,
 		MaxConcurrentUploads: t.MaxConcurrentUploads,
 		APILimits:            c.Limits.APILimits(),
+	}
+	// Tier override for encryption requirement.
+	if t.RequireEncryption != nil {
+		e.RequireEncryption = *t.RequireEncryption
 	}
 	// Tier limits narrow the global api limits; zero means inherit.
 	if t.MaxFiles > 0 && (e.APILimits.MaxFiles == 0 || t.MaxFiles < e.APILimits.MaxFiles) {

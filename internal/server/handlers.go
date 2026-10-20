@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -36,6 +37,7 @@ func (s *Server) hMe(w http.ResponseWriter, r *http.Request) {
 			"quota_bytes": usage.QuotaBytes, "slots": usage.Slots, "snapshots": usage.Snapshots,
 		},
 		"scopes": p.Scopes.String(), "anonymous": p.Anonymous,
+		"require_encryption": s.Svc.RequireEncryption(r.Context(), p),
 	})
 }
 
@@ -554,4 +556,94 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, v any, max i
 		return &api.Problem{Code: api.CodeBadRequest, Title: "trailing data", Status: 400}
 	}
 	return nil
+}
+
+// hVaultGet returns the stored vault header with its version ETag.
+func (s *Server) hVaultGet(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.authn(w, r)
+	if !ok {
+		return
+	}
+	if p.Scopes&auth.ScopeRead == 0 {
+		s.writeProblem(w, r, auth.ErrForbidden)
+		return
+	}
+	rec, err := s.Svc.GetVault(r.Context(), p)
+	if err != nil {
+		s.writeProblem(w, r, err)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf(`"%d"`, rec.Version))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(200)
+	_, _ = w.Write(rec.Header)
+}
+
+// hVaultPut stores the vault header, requiring If-Match when one exists.
+func (s *Server) hVaultPut(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.authn(w, r)
+	if !ok {
+		return
+	}
+	if p.Scopes&auth.ScopeWrite == 0 {
+		s.writeProblem(w, r, auth.ErrForbidden)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8192+1))
+	if err != nil || len(body) > 8192 {
+		s.writeProblem(w, r, &api.Problem{Code: api.CodeTooLarge,
+			Title: "vault header too large", Status: 413})
+		return
+	}
+	var ifv *int64
+	existing, gerr := s.Svc.GetVault(r.Context(), p)
+	if gerr == nil {
+		m := r.Header.Get("If-Match")
+		var v int64
+		fmt.Sscanf(m, `"%d"`, &v)
+		if m != `"-1"` && v != existing.Version {
+			s.writeProblem(w, r, &api.Problem{Code: api.CodeConflict,
+				Title: "version mismatch", Status: 412})
+			return
+		}
+		ifv = &v
+	} else {
+		if v := r.Header.Get("If-Match"); v != "" && v != `"0"` {
+			s.writeProblem(w, r, &api.Problem{Code: api.CodeConflict,
+				Title: "version mismatch", Status: 412})
+			return
+		}
+	}
+	// Extract kid if the blob is JSON.
+	kid := ""
+	var j map[string]any
+	if json.Unmarshal(body, &j) == nil {
+		if k, ok := j["kid"].(string); ok {
+			kid = k
+		}
+	}
+	ver, err := s.Svc.PutVault(r.Context(), p, body, kid, ifv)
+	if err != nil {
+		s.writeProblem(w, r, err)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf(`"%d"`, ver))
+	s.writeJSON(w, 200, map[string]any{"version": ver})
+}
+
+// hVaultDelete removes the vault header.
+func (s *Server) hVaultDelete(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.authn(w, r)
+	if !ok {
+		return
+	}
+	if p.Scopes&auth.ScopeWrite == 0 {
+		s.writeProblem(w, r, auth.ErrForbidden)
+		return
+	}
+	if err := s.Svc.DeleteVault(r.Context(), p); err != nil {
+		s.writeProblem(w, r, err)
+		return
+	}
+	w.WriteHeader(204)
 }

@@ -32,6 +32,12 @@ func TestConformance(t *testing.T) {
 	metatest.Run(t, factory)
 }
 
+func TestVault(t *testing.T) {
+	st := factory(t, testclock.New(time.Now()))
+	defer st.Close()
+	metatest.VaultRoundTrip(t, st)
+}
+
 func BenchmarkBegin100(b *testing.B) {
 	benchBegin(b, 100)
 }

@@ -98,6 +98,8 @@ type Config struct {
 	IncludeConfig  bool      `json:"include_config_files"`
 	Ignore         []string  `json:"ignore"`
 	Tracked        []Tracked `json:"tracked"`
+	VaultEnabled   bool      `json:"vault_enabled,omitempty"`
+	VaultKeystore  string    `json:"vault_keystore,omitempty"`
 }
 
 // Validate enforces strictness.

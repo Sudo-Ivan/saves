@@ -176,6 +176,7 @@ manifest, chunk, and request limits
 - limits.max_snapshot_bytes: global largest summed file sizes
 - limits.max_manifest_bytes: largest accepted manifest body
 - limits.manifest_cache_bytes: decoded manifest cache size per process, 0 disables
+- limits.require_encryption: require vault encrypted manifests for all snapshots
 - limits.max_path_depth: deepest allowed path component count
 - limits.max_concurrent_uploads: global parallel chunk upload cap
 ## gc

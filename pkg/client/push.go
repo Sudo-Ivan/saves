@@ -205,6 +205,9 @@ func (c *Client) chunkFile(ctx context.Context, f scanFile, inline int64) (api.F
 
 // Push snapshots the source to the server.
 func (c *Client) Push(ctx context.Context, app, slot string, src Source, st StateStore, opt PushOptions) (*PushResult, error) {
+	if c.cfg.Cipher != nil {
+		return c.encPush(ctx, app, slot, src, st, opt)
+	}
 	if err := src.Validate(); err != nil {
 		return nil, err
 	}

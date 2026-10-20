@@ -20,6 +20,7 @@ import (
 
 	"log/slog"
 
+	"database/sql"
 	"github.com/Sudo-Ivan/saves/internal/auth"
 	"github.com/Sudo-Ivan/saves/internal/blob"
 	"github.com/Sudo-Ivan/saves/internal/blob/fs"
@@ -35,6 +36,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/server"
 	"github.com/Sudo-Ivan/saves/internal/service"
 	"github.com/prometheus/client_golang/prometheus"
+	"strings"
 )
 
 // Version is the build version.
@@ -50,6 +52,10 @@ func Run(argv []string) int {
 	args := argv[1:]
 	_ = rest
 	switch cmd {
+	case "init":
+		return cmdInit(args)
+	case "admin":
+		return cmdAdmin(args)
 	case "sandbox-check":
 		return cmdSandboxCheck(argv[1:])
 	case "serve":
@@ -58,6 +64,12 @@ func Run(argv []string) int {
 		return cmdConfig(args)
 	case "migrate":
 		return cmdMigrate(args)
+	case "fsck":
+		return cmdFsck(args)
+	case "gc":
+		return cmdGC(args)
+	case "backup-meta":
+		return cmdBackupMeta(args)
 	case "healthcheck":
 		return cmdHealthcheck(args)
 	case "version":
@@ -183,6 +195,92 @@ func openBlob(cfg *config.Config) (blob.Store, error) {
 
 // applySandbox is the phase 4b hook. It is intentionally a no-op until
 // the sandbox lands; it sits between resource open and serve.
+func cmdFsck(args []string) int {
+	cfg, err := config.Load(configPath(args))
+	if err != nil {
+		return 1
+	}
+	repair := false
+	for _, a := range args {
+		repair = repair || a == "-repair"
+	}
+	st, err := openStore(cfg)
+	if err != nil {
+		return 1
+	}
+	defer st.Close()
+	rep, err := st.Fsck(context.Background(), repair)
+	if err != nil {
+		return 1
+	}
+	if len(rep.Issues) == 0 {
+		fmt.Println("fsck: clean")
+	}
+	for _, i := range rep.Issues {
+		fmt.Println("fsck:", i)
+	}
+	if rep.Repaired {
+		fmt.Println("fsck: repaired")
+	}
+	return 0
+}
+
+func cmdGC(args []string) int {
+	cfg, err := config.Load(configPath(args))
+	if err != nil {
+		return 1
+	}
+	st, err := openStore(cfg)
+	if err != nil {
+		return 1
+	}
+	defer st.Close()
+	b, err := openBlob(cfg)
+	if err != nil {
+		return 1
+	}
+	defer b.Close()
+	g := gc.New(st, b, gc.Options{})
+	rep, err := g.RunOnce(context.Background())
+	if err != nil {
+		return 1
+	}
+	fmt.Println("gc:", rep)
+	return 0
+}
+
+func cmdBackupMeta(args []string) int {
+	var out string
+	for i, a := range args {
+		if a == "-out" && i+1 < len(args) {
+			out = args[i+1]
+		}
+	}
+	if out == "" {
+		return 2
+	}
+	cfg, err := config.Load(configPath(args))
+	if err != nil {
+		return 1
+	}
+	if cfg.Storage.Meta.Driver != "sqlite" {
+		fmt.Fprintln(os.Stderr, "backup-meta: sqlite only; use pg_dump for postgres")
+		return 1
+	}
+	db, err := sql.Open("sqlite", cfg.Storage.Meta.SQLite.Path)
+	if err != nil {
+		return 1
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(),
+		"VACUUM INTO '"+strings.ReplaceAll(out, "'", "''")+"'"); err != nil {
+		fmt.Fprintln(os.Stderr, "backup-meta:", err)
+		return 1
+	}
+	fmt.Println("backup-meta:", out)
+	return 0
+}
+
 func cmdSandboxCheck(args []string) int {
 	cfg, err := config.Load(configPath(args))
 	if err != nil {

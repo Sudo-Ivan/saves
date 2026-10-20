@@ -47,7 +47,10 @@ func (d Duration) Duration() time.Duration { return time.Duration(d) }
 // String renders the duration in a compact human form.
 func (d Duration) String() string {
 	v := time.Duration(d)
-	if v%24*time.Hour == 0 {
+	if v == 0 {
+		return "0s"
+	}
+	if v%(24*time.Hour) == 0 {
 		return strconv.FormatInt(int64(v/(24*time.Hour)), 10) + "d"
 	}
 	return v.String()

@@ -8,6 +8,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/auth"
 	"github.com/Sudo-Ivan/saves/internal/blob"
 	"github.com/Sudo-Ivan/saves/internal/chunkindex"
+	"github.com/Sudo-Ivan/saves/internal/events"
 	"github.com/Sudo-Ivan/saves/internal/meta"
 	"github.com/Sudo-Ivan/saves/internal/quota"
 	"github.com/Sudo-Ivan/saves/pkg/api"
@@ -50,6 +52,9 @@ type Service struct {
 	// TokenInvalidator drops a cached token validation on the local
 	// auth cache after revocation.
 	TokenInvalidator func(id string)
+
+	// Events is the per-user SSE hub (may be nil).
+	Events *events.Hub
 
 	manCache *manifestCache
 
@@ -185,11 +190,22 @@ func (s *Service) GetSlot(ctx context.Context, p auth.Principal, app, slot strin
 }
 
 // DeleteSlot deletes a slot and releases its references.
+func (s *Service) deleteSlotPublish(p auth.Principal, app, slot string) {
+	if s.Events != nil {
+		b, _ := json.Marshal(map[string]any{"app": app, "slot": slot})
+		s.Events.Publish(p.User.ID, "slot_deleted", b)
+	}
+}
+
 func (s *Service) DeleteSlot(ctx context.Context, p auth.Principal, app, slot string) error {
 	if err := requireScope(p, auth.ScopeWrite, app); err != nil {
 		return err
 	}
-	return mapErr(s.Meta.DeleteSlot(ctx, p.User.ID, app, slot))
+	err := mapErr(s.Meta.DeleteSlot(ctx, p.User.ID, app, slot))
+	if err == nil {
+		s.deleteSlotPublish(p, app, slot)
+	}
+	return err
 }
 
 // BeginOut is returned by BeginSnapshot.
@@ -316,6 +332,12 @@ func (s *Service) CommitSnapshot(ctx context.Context, p auth.Principal, app, slo
 	if errors.As(err, &ce) {
 		// Keep the typed error so the handler can include the head.
 		return res, err
+	}
+	if err == nil && s.Events != nil {
+		b, _ := json.Marshal(map[string]any{
+			"app": app, "slot": slot, "snapshot": id,
+			"at": s.Clock().Unix()})
+		s.Events.Publish(p.User.ID, "head", b)
 	}
 	return res, mapErr(err)
 }

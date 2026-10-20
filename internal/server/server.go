@@ -90,6 +90,7 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /v1/vault", s.hVaultGet)
 	mux.HandleFunc("PUT /v1/vault", s.hVaultPut)
 	mux.HandleFunc("DELETE /v1/vault", s.hVaultDelete)
+	mux.HandleFunc("GET /v1/events", s.hEvents)
 	mux.HandleFunc("GET /v1/apps", s.hApps)
 	mux.HandleFunc("GET /v1/apps/{app}/slots", s.hSlots)
 	mux.HandleFunc("GET /v1/apps/{app}/slots/{slot}", s.hSlot)

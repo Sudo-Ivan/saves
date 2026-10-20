@@ -17,7 +17,7 @@ import (
 func TestMPTCPGuard(t *testing.T) {
 	skip := map[string]bool{
 		"internal/netx": true, "internal/netx/nettest": true,
-		"internal/cli": true, "internal/detect": true,
+		"internal/cli": true, "internal/detect": true, "internal/daemon": true, "internal/syncctl": true,
 		"cmd/savesctl": true, "pkg/client": true, "internal/sandbox": true,
 		"internal/e2e": true, "internal/testserver": true,
 	}

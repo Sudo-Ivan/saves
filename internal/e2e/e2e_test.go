@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -120,7 +121,9 @@ func deviceEnv(t *testing.T, name string) []string {
 
 func run(t *testing.T, env []string, args ...string) (int, string, string) {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(binDir, "savesctl"), args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, filepath.Join(binDir, "savesctl"), args...)
 	cmd.Env = env
 	var sob, seb bytes.Buffer
 	cmd.Stdout = &sob

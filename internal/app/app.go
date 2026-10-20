@@ -26,6 +26,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/blob/fs"
 	"github.com/Sudo-Ivan/saves/internal/blob/s3"
 	"github.com/Sudo-Ivan/saves/internal/config"
+	"github.com/Sudo-Ivan/saves/internal/events"
 	"github.com/Sudo-Ivan/saves/internal/gc"
 	"github.com/Sudo-Ivan/saves/internal/meta"
 	_ "github.com/Sudo-Ivan/saves/internal/meta/all"
@@ -371,6 +372,7 @@ func cmdServe(args []string) int {
 		MaxConcurrentUploads:        cfg.Limits.MaxConcurrentUploads,
 		MaxConcurrentUploadsPerUser: 4,
 	})
+	svc.Events = events.New(cfg.Limits.MaxEventStreams, 64)
 	chain, reg, err := buildAuth(cfg, m)
 	for _, a := range chain {
 		if ta, ok := a.(*auth.TokenAuthenticator); ok {

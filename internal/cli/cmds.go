@@ -130,7 +130,7 @@ func cmdGames(ctx context.Context, e *Env, args []string) error {
 	if err := fs.Parse(rest); err != nil {
 		return usagef("games: %v", err)
 	}
-	rest = fs.Args()
+	_ = fs.Args()
 	switch sub {
 	case "update":
 		cfg, paths, err := c.loadConfig(e)
@@ -468,17 +468,23 @@ func cmdSyncOp(op string) func(context.Context, *Env, []string) error {
 		st := stateStore(paths)
 		want := map[string]bool{}
 		for _, a := range fs.Args() {
+			if !strings.Contains(a, "/") {
+				want[a+"/*"] = true
+				continue
+			}
 			appID, sl, _ := clicfg.GameRef(a)
 			want[appID+"/"+sl] = true
 		}
+		matched := len(want) == 0 || *all
 		var retErr error
 		for _, t := range cfg.Tracked {
 			if !t.Enabled {
 				continue
 			}
-			if !*all && len(want) > 0 && !want[t.App+"/"+t.Slot] {
+			if !*all && len(want) > 0 && !want[t.App+"/"+t.Slot] && !want[t.App+"/*"] {
 				continue
 			}
+			matched = true
 			src := sourceFor(t)
 			if (op == "push" || op == "sync") && !*forceLocked && strings.HasPrefix(t.App, "minecraft") {
 				blocked := false
@@ -568,6 +574,22 @@ func cmdSyncOp(op string) func(context.Context, *Env, []string) error {
 					out["uploaded_bytes"] = pr.BytesUploaded
 					out["unchanged"] = pr.Unchanged
 					out["skipped"] = pr.Skipped
+					out["skipped_files"] = pr.SkippedFiles
+					// stderr: one line per skipped file, summarized >10.
+					if len(pr.SkippedFiles) > 0 && !c.json {
+						n := len(pr.SkippedFiles)
+						limit := n
+						if n > 10 {
+							limit = 10
+						}
+						for i := 0; i < limit; i++ {
+							fmt.Fprintf(e.Stderr, "skipped %s: %s\n",
+								pr.SkippedFiles[i].Path, pr.SkippedFiles[i].Reason)
+						}
+						if n > 10 {
+							fmt.Fprintf(e.Stderr, "skipped %d files total\n", n)
+						}
+					}
 					out["duration_ms"] = pr.Duration.Milliseconds()
 				}
 				if plr != nil {
@@ -582,6 +604,9 @@ func cmdSyncOp(op string) func(context.Context, *Env, []string) error {
 				continue
 			}
 			fmt.Fprintf(e.Stdout, "%s/%s %s ok\n", t.App, t.Slot, op)
+		}
+		if !matched {
+			return usagef("%s: no tracked game matches %v", op, fs.Args())
 		}
 		return retErr
 	}

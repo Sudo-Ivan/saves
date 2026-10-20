@@ -647,3 +647,64 @@ func (s *Server) hVaultDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
+
+// hEvents streams server-sent events for the authenticated user.
+func (s *Server) hEvents(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.authn(w, r)
+	if !ok {
+		return
+	}
+	if p.Scopes&auth.ScopeRead == 0 {
+		s.writeProblem(w, r, auth.ErrForbidden)
+		return
+	}
+	ch, drop, err := s.Svc.Events.Subscribe(p.User.ID)
+	if err != nil {
+		s.writeProblem(w, r, &api.Problem{Code: "too_many_streams",
+			Title: "too many event streams", Status: 429})
+		return
+	}
+	defer drop()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(200)
+	fl, _ := w.(http.Flusher)
+	fmt.Fprintf(w, ": keepalive\nretry: 5000\n\n")
+	if fl != nil {
+		fl.Flush()
+	}
+	ctx := r.Context()
+	idle := time.NewTicker(15 * time.Second)
+	defer idle.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok2 := <-ch:
+			if !ok2 {
+				return
+			}
+			var b strings.Builder
+			b.WriteString("id: ")
+			b.WriteString(strconv.FormatInt(ev.ID, 10))
+			b.WriteString("\nevent: " + ev.Type + "\n")
+			for _, ln := range strings.Split(string(ev.Data), "\n") {
+				b.WriteString("data: " + ln + "\n")
+			}
+			b.WriteString("\n")
+			if _, err := io.WriteString(w, b.String()); err != nil {
+				return
+			}
+			if fl != nil {
+				fl.Flush()
+			}
+		case <-idle.C:
+			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			if fl != nil {
+				fl.Flush()
+			}
+		}
+	}
+}

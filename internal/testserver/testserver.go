@@ -44,6 +44,10 @@ func New(t testing.TB) *T {
 	b := mem.New()
 	cfg := config.Defaults()
 	cfg.Quota.AllowUnknownApps = ".*"
+	for k, t := range cfg.Quota.Tiers {
+		t.Rate = config.RateLimit{RequestsPerSec: 0, Burst: 0}
+		cfg.Quota.Tiers[k] = t
+	}
 	pol := config.AppPolicy{AllowForce: true}
 	cfg.Quota.Apps = map[string]config.AppPolicy{"a": pol, "app": pol}
 	cfg.Log.Access = false

@@ -30,6 +30,10 @@ type Plan struct {
 	DeletedLocal       []string
 	LocalBytes         int64
 	RemoteManifestHash api.Hash
+	// LocalNewest and RemoteNewest are the newest file mtimes on
+	// each side, used by KeepNewest (ties keep remote).
+	LocalNewest  int64
+	RemoteNewest int64
 }
 
 // Plan inspects local vs remote without mutating anything.
@@ -58,6 +62,9 @@ func (c *Client) Plan(ctx context.Context, app, slot string, src Source, st Stat
 	changed := false
 	for _, f := range files {
 		seen[f.path] = true
+		if f.mtimeNS > p.LocalNewest {
+			p.LocalNewest = f.mtimeNS
+		}
 		if prev == nil || prev.FileCache == nil {
 			changed = true
 			p.AddedLocal = append(p.AddedLocal, f.path)
@@ -85,6 +92,13 @@ func (c *Client) Plan(ctx context.Context, app, slot string, src Source, st Stat
 			if !seen[path] {
 				changed = true
 				p.DeletedLocal = append(p.DeletedLocal, path)
+			}
+		}
+	}
+	if m, err := c.GetManifest(ctx, app, slot, head); err == nil && m != nil {
+		for _, f := range m.Files {
+			if f.ModTimeNS > p.RemoteNewest {
+				p.RemoteNewest = f.ModTimeNS
 			}
 		}
 	}
@@ -131,6 +145,9 @@ const (
 	Fail ConflictStrategy = iota
 	KeepLocal
 	KeepRemote
+	// KeepNewest keeps the side with the newest file mtime; ties
+	// keep remote.
+	KeepNewest
 	Ask
 )
 
@@ -183,6 +200,13 @@ func (c *Client) Sync(ctx context.Context, app, slot string, src Source, st Stat
 		s := opt.OnConflict
 		if s == Ask && opt.AskFn != nil {
 			s = opt.AskFn(p)
+		}
+		if s == KeepNewest {
+			if p.LocalNewest > p.RemoteNewest {
+				s = KeepLocal
+			} else {
+				s = KeepRemote
+			}
 		}
 		switch s {
 		case KeepLocal:

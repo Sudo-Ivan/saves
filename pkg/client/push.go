@@ -72,6 +72,8 @@ type PushResult struct {
 	Duration      time.Duration
 	Unchanged     bool
 	Skipped       int64
+	// SkippedFiles lists each skipped path with its reason.
+	SkippedFiles []SkippedFile
 }
 
 // scanFile is a file discovered by walking.
@@ -85,11 +87,17 @@ type scanFile struct {
 }
 
 // walkSource lists files under each root, applying ignore and path
+// SkippedFile is a path left out of a push with its reason.
+type SkippedFile struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
 // validation. Files inside a missing root are skipped on push.
-func walkSource(src Source, ig *Ignore, ev func(Event)) ([]scanFile, []string, int64, error) {
+func walkSource(src Source, ig *Ignore, ev func(Event)) ([]scanFile, []string, []SkippedFile, error) {
 	var files []scanFile
 	var dirs []string
-	var skipped int64
+	var skipped []SkippedFile
 	for _, root := range src.Roots {
 		rt, err := os.OpenRoot(root.Dir)
 		if err != nil {
@@ -105,12 +113,12 @@ func walkSource(src Source, ig *Ignore, ev func(Event)) ([]scanFile, []string, i
 			mpath := root.Key + "/" + filepath.ToSlash(p)
 			if d.Type()&fs.ModeSymlink != 0 {
 				ev(Event{Kind: EvSkip, Path: mpath, Detail: "symlink"})
-				skipped++
+				skipped = append(skipped, SkippedFile{Path: p, Reason: "unreadable or excluded"})
 				return nil
 			}
 			if !d.Type().IsRegular() && !d.IsDir() {
 				ev(Event{Kind: EvSkip, Path: mpath, Detail: "not a regular file"})
-				skipped++
+				skipped = append(skipped, SkippedFile{Path: p, Reason: "unreadable or excluded"})
 				return nil
 			}
 			if ig.Match(mpath, d.IsDir()) {
@@ -121,7 +129,7 @@ func walkSource(src Source, ig *Ignore, ev func(Event)) ([]scanFile, []string, i
 			}
 			if err := api.ValidatePath(mpath, 64); err != nil {
 				ev(Event{Kind: EvSkip, Path: mpath, Detail: "invalid path"})
-				skipped++
+				skipped = append(skipped, SkippedFile{Path: p, Reason: "unreadable or excluded"})
 				if d.IsDir() {
 					return fs.SkipDir
 				}
@@ -144,7 +152,7 @@ func walkSource(src Source, ig *Ignore, ev func(Event)) ([]scanFile, []string, i
 		})
 		if err != nil {
 			_ = rt.Close()
-			return nil, nil, 0, err
+			return nil, nil, nil, err
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
@@ -322,12 +330,12 @@ func (c *Client) Push(ctx context.Context, app, slot string, src Source, st Stat
 		}
 		return &PushResult{Snapshot: prev.LastSnapshot, Files: int64(len(files)),
 			Dirs: int64(len(dirs)), Bytes: mfiles, Chunks: totalChunks,
-			Duration: time.Since(t0), Unchanged: true, Skipped: skipped}, nil
+			Duration: time.Since(t0), Unchanged: true, Skipped: int64(len(skipped)), SkippedFiles: skipped}, nil
 	}
 	if opt.DryRun {
 		return &PushResult{Files: int64(len(files)), Dirs: int64(len(dirs)),
 			Bytes: mfiles, Chunks: totalChunks, Deduped: int64(len(uniq)),
-			Duration: time.Since(t0), Skipped: skipped}, nil
+			Duration: time.Since(t0), Skipped: int64(len(skipped)), SkippedFiles: skipped}, nil
 	}
 
 	// Begin.
@@ -504,7 +512,7 @@ func (c *Client) Push(ctx context.Context, app, slot string, src Source, st Stat
 	return &PushResult{Snapshot: begin.ID, Files: int64(len(files)),
 		Dirs: int64(len(dirs)), Bytes: mfiles, Chunks: totalChunks,
 		Uploaded: uploaded, Deduped: totalChunks - uploaded,
-		BytesUploaded: uploadedBytes, Duration: time.Since(t0), Skipped: skipped}, nil
+		BytesUploaded: uploadedBytes, Duration: time.Since(t0), Skipped: int64(len(skipped)), SkippedFiles: skipped}, nil
 }
 
 type hashed struct {
@@ -525,6 +533,13 @@ func fileSig(hs []hashed) string {
 		for _, r := range e.refs {
 			h.Write(r.Hash[:])
 		}
+		if e.entry.Inline {
+			h.Write([]byte{1})
+			h.Write(e.entry.InlineHash[:])
+		}
+		var mode [4]byte
+		binary.LittleEndian.PutUint32(mode[:], e.file.Mode)
+		h.Write(mode[:])
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))

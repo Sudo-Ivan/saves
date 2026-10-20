@@ -4,12 +4,15 @@
 package clicfg
 
 import (
+	"time"
+
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Sudo-Ivan/saves/internal/config"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -82,6 +85,31 @@ type Tracked struct {
 	OnConflict string            `json:"on_conflict"` // ask|keep-local|keep-remote|keep-newest|fail
 }
 
+// DaemonCfg holds daemon timing and toggle settings.
+type DaemonCfg struct {
+	QuietPeriod  config.Duration `json:"quiet_period"`
+	PollInterval config.Duration `json:"poll_interval"`
+	MaxParallel  int             `json:"max_parallel"`
+	HardCap      config.Duration `json:"hard_cap"`
+	Notify       bool            `json:"notify"`
+}
+
+// daemonDefaults fills unset daemon knobs.
+func (c *Config) daemonDefaults() {
+	if c.Daemon.QuietPeriod == 0 {
+		c.Daemon.QuietPeriod = config.Duration(15 * time.Second)
+	}
+	if c.Daemon.PollInterval == 0 {
+		c.Daemon.PollInterval = config.Duration(5 * time.Minute)
+	}
+	if c.Daemon.MaxParallel == 0 {
+		c.Daemon.MaxParallel = 2
+	}
+	if c.Daemon.HardCap == 0 {
+		c.Daemon.HardCap = config.Duration(10 * time.Minute)
+	}
+}
+
 // Config is config.json.
 type Config struct {
 	Server         string    `json:"server"`
@@ -100,6 +128,7 @@ type Config struct {
 	Tracked        []Tracked `json:"tracked"`
 	VaultEnabled   bool      `json:"vault_enabled,omitempty"`
 	VaultKeystore  string    `json:"vault_keystore,omitempty"`
+	Daemon         DaemonCfg `json:"daemon"`
 }
 
 // Validate enforces strictness.

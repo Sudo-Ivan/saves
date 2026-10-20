@@ -179,6 +179,7 @@ manifest, chunk, and request limits
 - limits.require_encryption: require vault encrypted manifests for all snapshots
 - limits.max_path_depth: deepest allowed path component count
 - limits.max_concurrent_uploads: global parallel chunk upload cap
+- limits.max_event_streams: max event streams per user, 0 disables events
 ## gc
 
 garbage collection schedule

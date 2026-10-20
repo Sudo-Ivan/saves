@@ -168,7 +168,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 	if prev != nil && prev.ContentSig == sig && prev.LastSnapshot != "" {
 		return &PushResult{Snapshot: prev.LastSnapshot, Files: int64(len(files)),
 			Dirs: int64(len(dirs)), Bytes: mfiles, Chunks: totalChunks,
-			Duration: time.Since(t0), Unchanged: true, Skipped: skipped}, nil
+			Duration: time.Since(t0), Unchanged: true, Skipped: int64(len(skipped)), SkippedFiles: skipped}, nil
 	}
 	// meta entry (only generated when something changed).
 	mj, _ := json.Marshal(metaBody)
@@ -262,7 +262,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 	return &PushResult{Snapshot: begin.ID, Files: int64(len(files)),
 		Dirs: int64(len(dirs)), Bytes: mfiles, Chunks: totalChunks,
 		Uploaded: uploaded, BytesUploaded: uploadedBytes,
-		Duration: time.Since(t0), Skipped: skipped}, nil
+		Duration: time.Since(t0), Skipped: int64(len(skipped)), SkippedFiles: skipped}, nil
 }
 
 // encPull decrypts an encrypted snapshot.

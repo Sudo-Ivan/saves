@@ -240,6 +240,7 @@ type LimitsConfig struct {
 	RequireEncryption    bool `json:"require_encryption" doc:"require vault encrypted manifests for all snapshots"`
 	MaxPathDepth         int  `json:"max_path_depth" doc:"deepest allowed path component count"`
 	MaxConcurrentUploads int  `json:"max_concurrent_uploads" doc:"global parallel chunk upload cap"`
+	MaxEventStreams      int  `json:"max_event_streams" doc:"max event streams per user, 0 disables events"`
 }
 
 // APILimits projects the configured limits into the wire type.
@@ -357,7 +358,7 @@ func Defaults() Config {
 		MaxManifestBytes:     Size(4 << 20),
 		ManifestCacheBytes:   Size(64 << 20),
 		MaxPathDepth:         64,
-		MaxConcurrentUploads: 64,
+		MaxConcurrentUploads: 64, MaxEventStreams: 8,
 	}
 	c.GC = GCConfig{Interval: Duration(600e9), GracePeriod: Duration(24 * 3600e9), PendingTTL: Duration(3600e9), BatchSize: 500, LeaseHolder: "savesd"}
 	c.Sandbox = SandboxConfig{Mode: "enforce"}

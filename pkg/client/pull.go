@@ -388,7 +388,8 @@ func (c *Client) Pull(ctx context.Context, app, slot, snapshot string, src Sourc
 	nst.LastManifestHash = mh
 	var hs []hashed
 	for _, f := range m.Files {
-		hs = append(hs, hashed{file: f, refs: f.Chunks})
+		ent := nst.FileCache[f.Path]
+		hs = append(hs, hashed{file: f, refs: f.Chunks, entry: ent})
 	}
 	nst.FileSig = fileSig(hs)
 	if err := st.Save(app, slot, nst); err != nil {

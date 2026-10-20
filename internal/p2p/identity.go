@@ -36,7 +36,7 @@ type Identity struct {
 // LoadIdentity generates or loads <dir>/device.key (0600).
 func LoadIdentity(dir string) (*Identity, error) {
 	p := filepath.Join(dir, "device.key")
-	if b, err := os.ReadFile(p); err == nil && len(b) == ed25519.SeedSize {
+	if b, err := os.ReadFile(p); err == nil && len(b) == ed25519.SeedSize { // #nosec G304 -- path chosen by the local user or derived from validated config
 		priv := ed25519.NewKeyFromSeed(b)
 		return makeIdentity(priv)
 	}
@@ -90,12 +90,13 @@ func (id *Identity) TLSConfig(peers *PeerSet, isServer bool) *tls.Config {
 	} else {
 		cfg.InsecureSkipVerify = true
 	}
-	cfg.VerifyPeerCertificate = func(raw [][]byte, _ [][]*x509.Certificate) error {
-		c, err := x509.ParseCertificate(raw[0])
-		if err != nil {
-			return err
+	// VerifyConnection runs on resumed handshakes too, so removing a peer
+	// takes effect on its next connection even with a cached session.
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return errors.New("p2p: no peer certificate")
 		}
-		pub, ok := c.PublicKey.(ed25519.PublicKey)
+		pub, ok := cs.PeerCertificates[0].PublicKey.(ed25519.PublicKey)
 		if !ok {
 			return errors.New("p2p: peer cert is not ed25519")
 		}

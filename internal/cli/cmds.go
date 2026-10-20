@@ -798,7 +798,7 @@ func cmdBackups(ctx context.Context, e *Env, args []string) error {
 				continue
 			}
 			err = copyRootDir(sr, dr, ".")
-			dr.Close()
+			_ = dr.Close()
 			if err == nil {
 				n++
 				_ = k

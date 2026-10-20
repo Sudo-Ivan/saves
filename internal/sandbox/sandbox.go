@@ -25,6 +25,7 @@ type Policy struct {
 	ConnectTCP []uint16
 	BindTCP    []uint16
 	ConnectUDP []uint16
+	BindUDP    []uint16
 	Scoped     bool
 }
 
@@ -43,10 +44,13 @@ type Report struct {
 func FromConfig(c *config.Config, configPath string) (*Policy, error) {
 	p := &Policy{Scoped: true}
 	addRW := func(d string) {
-		if d == "" || d == "/" || !filepath.IsAbs(d) {
+		if d == "" || !filepath.IsAbs(d) {
 			return
 		}
-		p.RWDirs = append(p.RWDirs, filepath.Clean(d))
+		if d = filepath.Clean(d); d == "/" {
+			return
+		}
+		p.RWDirs = append(p.RWDirs, d)
 	}
 	switch c.Storage.Blob.Driver {
 	case "fs":
@@ -81,6 +85,24 @@ func FromConfig(c *config.Config, configPath string) (*Policy, error) {
 	}
 	addPort(&p.ConnectTCP, 53) // DNS
 	p.ConnectUDP = []uint16{53}
+	// The h3 listener binds UDP on h3_addr (defaulting to listen.addr).
+	h3a := c.Listen.H3Addr
+	if h3a == "" {
+		h3a = c.Listen.Addr
+	}
+	for _, pstr := range c.Listen.Protocols {
+		if pstr != "h3" {
+			continue
+		}
+		_, port, err := net.SplitHostPort(h3a)
+		if err == nil {
+			var pi int
+			_, _ = fmt.Sscanf(port, "%d", &pi)
+			if pi > 0 {
+				addPort(&p.BindUDP, uint16(pi))
+			}
+		}
+	}
 	// Bound sockets must survive the net restriction.
 	for _, addr := range []string{c.Listen.Addr, c.Ops.Addr} {
 		if addr == "" {
@@ -89,7 +111,7 @@ func FromConfig(c *config.Config, configPath string) (*Policy, error) {
 		_, port, err := net.SplitHostPort(addr)
 		if err == nil {
 			var pi int
-			fmt.Sscanf(port, "%d", &pi)
+			_, _ = fmt.Sscanf(port, "%d", &pi)
 			if pi > 0 {
 				addPort(&p.BindTCP, uint16(pi))
 			}
@@ -106,10 +128,13 @@ func FromConfig(c *config.Config, configPath string) (*Policy, error) {
 func cleanPaths(in []string) []string {
 	var out []string
 	for _, p := range in {
-		if p == "" || p == "/" || !filepath.IsAbs(p) {
+		if p == "" || !filepath.IsAbs(p) {
 			continue
 		}
-		out = append(out, filepath.Clean(p))
+		if p = filepath.Clean(p); p == "/" {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out
 }

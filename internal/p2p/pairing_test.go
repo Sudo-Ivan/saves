@@ -42,8 +42,7 @@ func TestPairWrongCode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_, J, ph, pj, addr, _, _, minted := pairPair(t, time.Minute)
-	bad := "AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AA"[:26]
-	bad = strings.ReplaceAll("ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZ", "-", "-")
+	bad := strings.ReplaceAll("ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZ", "-", "-")
 	for i := 0; i < 3; i++ {
 		_, err := JoinPair(ctx, J, pj, addr, bad, "j")
 		if err == nil {

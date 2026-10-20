@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: saves
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: savesd-config
+  namespace: saves
+data:
+  config.json: |
+    {"listen": {"addr": ":8443", "protocols": ["h2", "h3"]},
+     "storage": {"meta": {"driver": "postgres", "postgres": {"dsn_file": "/run/secrets/pg_dsn"}},
+                 "blob": {"driver": "s3", "s3": {"bucket": "saves"}}}}
+---
+# Fill before apply: pg_dsn, s3 credentials, tls material.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: savesd-secrets
+  namespace: saves
+type: Opaque
+stringData:
+  pg_dsn: "postgres://saves:CHANGEME@postgres:5432/saves"
+  s3_secret: "CHANGEME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: savesd}
+  template:
+    metadata:
+      labels: {app: savesd}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          # RuntimeDefault allows the landlock syscalls on recent
+          # container runtimes.
+          type: RuntimeDefault
+      containers:
+        - name: savesd
+          image: saves:latest
+          args: ["serve", "-config", "/etc/saves/config.json"]
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          ports:
+            - {containerPort: 8443, protocol: TCP}
+            - {containerPort: 8443, protocol: UDP}
+            - {containerPort: 9090, protocol: TCP}
+          volumeMounts:
+            - {name: config, mountPath: /etc/saves, readOnly: true}
+            - {name: secrets, mountPath: /run/secrets, readOnly: true}
+          livenessProbe:
+            httpGet: {path: /healthz, port: 9090}
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: 9090}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+      volumes:
+        - {name: config, configMap: {name: savesd-config}}
+        - {name: secrets, secret: {secretName: savesd-secrets}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  selector: {app: savesd}
+  ports:
+    - {name: https, port: 443, targetPort: 8443}
+---
+# UDP LoadBalancer for h3; session affinity keeps QUIC on one backend.
+apiVersion: v1
+kind: Service
+metadata:
+  name: savesd-h3
+  namespace: saves
+spec:
+  type: LoadBalancer
+  sessionAffinity: ClientIP
+  selector: {app: savesd}
+  ports:
+    - {name: h3, port: 443, targetPort: 8443, protocol: UDP}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  rules:
+    - host: saves.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: savesd, port: {number: 443}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: savesd}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: savesd
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: savesd-migrate
+  namespace: saves
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: saves:latest
+          args: ["migrate", "-config", "/etc/saves/config.json"]
+          volumeMounts:
+            - {name: config, mountPath: /etc/saves, readOnly: true}
+            - {name: secrets, mountPath: /run/secrets, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: savesd-config}}
+        - {name: secrets, secret: {secretName: savesd-secrets}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: savesd
+  namespace: saves
+spec:
+  podSelector: {matchLabels: {app: savesd}}
+  ingress:
+    - ports:
+        - {port: 8443, protocol: TCP}
+        - {port: 8443, protocol: UDP}

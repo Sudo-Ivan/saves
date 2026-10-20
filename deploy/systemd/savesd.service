@@ -1,0 +1,24 @@
+[Unit]
+Description=savesd save sync server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/savesd serve -config /etc/saves/config.json
+Restart=on-failure
+DynamicUser=yes
+StateDirectory=saves
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/saves
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service @pkey
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

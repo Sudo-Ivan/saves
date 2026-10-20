@@ -1,0 +1,79 @@
+{
+  "listen": {
+    "addr": ":8443",
+    "tls": {
+      "mode": "none"
+    },
+    "protocols": [
+      "h1"
+    ],
+    "read_header_timeout": "10s",
+    "idle_timeout": "120s",
+    "shutdown_timeout": "10s",
+    "max_header_bytes": "1MiB",
+    "max_conns": 0,
+    "min_throughput": "16KiB"
+  },
+  "ops": {
+    "enabled": true,
+    "addr": "127.0.0.1:9090"
+  },
+  "storage": {
+    "meta": {
+      "driver": "sqlite",
+      "sqlite": {
+        "path": "/data/meta.db"
+      }
+    },
+    "blob": {
+      "driver": "fs",
+      "fs": {
+        "root": "/data/blobs",
+        "fsync": "dir"
+      }
+    }
+  },
+  "auth": {
+    "order": [
+      "token"
+    ],
+    "token": {
+      "enabled": true,
+      "cache_ttl": "60s"
+    }
+  },
+  "registration": {
+    "mode": "invite",
+    "invite_codes_file": "/run/secrets/saves_invites",
+    "invite_max_uses": 0,
+    "per_sec": 1.0
+  },
+  "quota": {
+    "default_tier": "free",
+    "allow_unknown_apps": ".*",
+    "tiers": {
+      "free": {
+        "quota_bytes": "10GiB",
+        "max_slots": 16,
+        "max_snapshots_per_slot": 30,
+        "max_files": 1048576,
+        "max_file_bytes": "16GiB",
+        "max_snapshot_bytes": "10GiB",
+        "max_pending_snapshots": 4,
+        "retention": {
+          "keep_last": 30,
+          "max_age": "2160h"
+        },
+        "rate": {
+          "requests_per_sec": 20,
+          "burst": 60
+        },
+        "max_concurrent_uploads": 4
+      }
+    }
+  },
+  "log": {
+    "level": "info",
+    "format": "json"
+  }
+}

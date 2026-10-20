@@ -19,6 +19,6 @@ func ReportMetrics(reg prometheus.Registerer, r Report) {
 	abi := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "saves_sandbox_abi", Help: "landlock abi"})
 	abi.Set(float64(r.ABI))
-	reg.Register(gv)
-	reg.Register(abi)
+	_ = reg.Register(gv)
+	_ = reg.Register(abi)
 }

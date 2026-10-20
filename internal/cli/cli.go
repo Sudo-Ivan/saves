@@ -102,25 +102,36 @@ func (c *common) loadConfig(env *Env) (*clicfg.Config, clicfg.Paths, error) {
 }
 
 // client builds a pkg/client from config.
-func (e *Env) clientFor(cfg *clicfg.Config) (*client.Client, error) {
-	if e.Client != nil {
-		return e.Client(*cfg)
-	}
+func (e *Env) baseConfig(cfg *clicfg.Config) (client.Config, error) {
 	if cfg.Server == "" {
-		return nil, &ExitError{ExAuth, errors.New("no server configured; run savesctl setup")}
+		return client.Config{}, &ExitError{ExAuth, errors.New("no server configured; run savesctl setup")}
 	}
 	cc := client.Config{
 		BaseURL: cfg.Server, Token: cfg.Token,
 		Concurrency: cfg.Concurrency,
 		HTTP:        &http.Client{Transport: netx.NewTransport()},
 	}
-	if strings.HasPrefix(cfg.Server, "p2p://") {
+	switch {
+	case strings.HasPrefix(cfg.Server, "p2p://"):
 		rt, err := p2pTransport(e.Paths.Config, strings.TrimPrefix(cfg.Server, "p2p://"))
 		if err != nil {
-			return nil, err
+			return cc, err
 		}
 		cc.BaseURL = "https://p2p.invalid"
 		cc.HTTP = &http.Client{Transport: rt}
+	case cfg.Protocol == "h3":
+		cc.HTTP, cc.HTTP3 = nil, true
+	}
+	return cc, nil
+}
+
+func (e *Env) clientFor(cfg *clicfg.Config) (*client.Client, error) {
+	if e.Client != nil {
+		return e.Client(*cfg)
+	}
+	cc, err := e.baseConfig(cfg)
+	if err != nil {
+		return nil, err
 	}
 	v, err := cipherFor(context.Background(), e, cfg)
 	if err != nil {
@@ -138,21 +149,9 @@ func (e *Env) clientPlain(cfg *clicfg.Config) (*client.Client, error) {
 	if e.Client != nil {
 		return e.Client(*cfg)
 	}
-	if cfg.Server == "" {
-		return nil, &ExitError{ExAuth, errors.New("no server configured; run savesctl setup")}
-	}
-	cc := client.Config{
-		BaseURL: cfg.Server, Token: cfg.Token,
-		Concurrency: cfg.Concurrency,
-		HTTP:        &http.Client{Transport: netx.NewTransport()},
-	}
-	if strings.HasPrefix(cfg.Server, "p2p://") {
-		rt, err := p2pTransport(e.Paths.Config, strings.TrimPrefix(cfg.Server, "p2p://"))
-		if err != nil {
-			return nil, err
-		}
-		cc.BaseURL = "https://p2p.invalid"
-		cc.HTTP = &http.Client{Transport: rt}
+	cc, err := e.baseConfig(cfg)
+	if err != nil {
+		return nil, err
 	}
 	return client.New(cc)
 }

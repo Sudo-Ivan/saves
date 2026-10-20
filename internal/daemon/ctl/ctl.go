@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Sudo-Ivan/saves/internal/daemon"
 )
@@ -63,7 +64,7 @@ func (s *Server) Start(runtimeDir string) (string, error) {
 	mux.HandleFunc("GET /conflicts", s.guard(s.hConflicts))
 	mux.HandleFunc("POST /conflicts/resolve", s.guard(s.hResolve))
 	mux.HandleFunc("POST /rescan", s.guard(s.hRescan))
-	s.srv = &http.Server{Handler: mux}
+	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10}
 	go s.srv.Serve(ln)
 	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		return "", err
@@ -79,7 +80,7 @@ func (s *Server) Start(runtimeDir string) (string, error) {
 
 // Stop closes the listener.
 func (s *Server) Stop() {
-	s.srv.Close()
+	_ = s.srv.Close()
 	s.d.Stop()
 }
 
@@ -110,39 +111,39 @@ func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) hStatus(w http.ResponseWriter, r *http.Request) {
 	paused, games := s.d.Status()
-	json.NewEncoder(w).Encode(map[string]any{
+	json.NewEncoder(w).Encode(map[string]any{ // #nosec G104 -- best effort, error is not actionable
 		"paused": paused, "games": games, "server_reachable": s.d.Reachable()})
 }
 func (s *Server) hGames(w http.ResponseWriter, r *http.Request) {
 	_, games := s.d.Status()
-	json.NewEncoder(w).Encode(games)
+	_ = json.NewEncoder(w).Encode(games)
 }
 func (s *Server) hLogs(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("since"); v != "" {
 		var id int64
-		fmt.Sscanf(v, "%d", &id)
-		json.NewEncoder(w).Encode(s.d.LogsSince(id))
+		_, _ = fmt.Sscanf(v, "%d", &id)
+		_ = json.NewEncoder(w).Encode(s.d.LogsSince(id))
 		return
 	}
 	n := 100
-	fmt.Sscanf(r.URL.Query().Get("n"), "%d", &n)
-	json.NewEncoder(w).Encode(s.d.Logs(n))
+	_, _ = fmt.Sscanf(r.URL.Query().Get("n"), "%d", &n)
+	_ = json.NewEncoder(w).Encode(s.d.Logs(n))
 }
 func (s *Server) hSync(w http.ResponseWriter, r *http.Request) {
 	var b struct{ Game string }
-	json.NewDecoder(r.Body).Decode(&b)
+	_ = json.NewDecoder(r.Body).Decode(&b)
 	go s.d.SyncNow(b.Game)
 	w.WriteHeader(202)
 }
 func (s *Server) hPause(w http.ResponseWriter, r *http.Request) {
 	var b struct{ Game string }
-	json.NewDecoder(r.Body).Decode(&b)
+	_ = json.NewDecoder(r.Body).Decode(&b)
 	s.d.Pause(b.Game)
 	w.WriteHeader(204)
 }
 func (s *Server) hResume(w http.ResponseWriter, r *http.Request) {
 	var b struct{ Game string }
-	json.NewDecoder(r.Body).Decode(&b)
+	_ = json.NewDecoder(r.Body).Decode(&b)
 	s.d.Resume(b.Game)
 	w.WriteHeader(204)
 }
@@ -152,7 +153,7 @@ func (s *Server) hStop(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) hResolve(w http.ResponseWriter, r *http.Request) {
 	var b struct{ Game, Choice string }
-	json.NewDecoder(r.Body).Decode(&b)
+	_ = json.NewDecoder(r.Body).Decode(&b)
 	if err := s.d.Resolve(b.Game, b.Choice); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
@@ -170,5 +171,5 @@ func (s *Server) hConflicts(w http.ResponseWriter, r *http.Request) {
 			c = append(c, k)
 		}
 	}
-	json.NewEncoder(w).Encode(c)
+	_ = json.NewEncoder(w).Encode(c)
 }

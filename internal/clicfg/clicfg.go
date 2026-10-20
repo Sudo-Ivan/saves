@@ -4,8 +4,6 @@
 package clicfg
 
 import (
-	"time"
-
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
@@ -92,22 +90,6 @@ type DaemonCfg struct {
 	MaxParallel  int             `json:"max_parallel"`
 	HardCap      config.Duration `json:"hard_cap"`
 	Notify       bool            `json:"notify"`
-}
-
-// daemonDefaults fills unset daemon knobs.
-func (c *Config) daemonDefaults() {
-	if c.Daemon.QuietPeriod == 0 {
-		c.Daemon.QuietPeriod = config.Duration(15 * time.Second)
-	}
-	if c.Daemon.PollInterval == 0 {
-		c.Daemon.PollInterval = config.Duration(5 * time.Minute)
-	}
-	if c.Daemon.MaxParallel == 0 {
-		c.Daemon.MaxParallel = 2
-	}
-	if c.Daemon.HardCap == 0 {
-		c.Daemon.HardCap = config.Duration(10 * time.Minute)
-	}
 }
 
 // Config is config.json.

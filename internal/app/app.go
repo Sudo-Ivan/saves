@@ -37,7 +37,6 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/server"
 	"github.com/Sudo-Ivan/saves/internal/service"
 	"github.com/prometheus/client_golang/prometheus"
-	"strings"
 )
 
 // Version is the build version.
@@ -273,8 +272,7 @@ func cmdBackupMeta(args []string) int {
 		return 1
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(context.Background(),
-		"VACUUM INTO '"+strings.ReplaceAll(out, "'", "''")+"'"); err != nil {
+	if _, err := db.ExecContext(context.Background(), "VACUUM INTO ?", out); err != nil {
 		fmt.Fprintln(os.Stderr, "backup-meta:", err)
 		return 1
 	}
@@ -296,7 +294,7 @@ func cmdSandboxCheck(args []string) int {
 	if os.Getenv("SAVES_SBX_CHILD") == "1" {
 		return sandbox.Child(pol, cfg.Sandbox.Mode)
 	}
-	cmd := exec.Command(os.Args[0], "sandbox-check")
+	cmd := exec.Command(os.Args[0], "sandbox-check") // #nosec G204 G702 -- argv slice built by this program, no shell
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Env = append(os.Environ(), "SAVES_SBX_CHILD=1")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr

@@ -1,0 +1,15 @@
+groups:
+  - name: savesd
+    rules:
+      - alert: SavesdDown
+        expr: up{job="savesd"} == 0
+        for: 5m
+        annotations: {summary: "savesd instance down"}
+      - alert: SavesdHighErrorRate
+        expr: rate(saves_http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 10m
+        annotations: {summary: "elevated 5xx rate on savesd"}
+      - alert: SavesdQuotaNearFull
+        expr: saves_quota_bytes_used / saves_quota_bytes_total > 0.9
+        for: 15m
+        annotations: {summary: "user quota above 90 percent"}

@@ -30,7 +30,7 @@
     "format": "json"
   },
   "sandbox": {
-    "mode": "off"
+    "mode": "enforce"
   },
   "quota": {
     "allow_unknown_apps": ".*"

@@ -107,16 +107,16 @@ X-GNOME-Autostart-enabled=true
 func installLinux(s Spec) error {
 	if s.Target == "tray" {
 		p := desktopPath(s.ConfigDir)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil { // #nosec G301 -- user visible directory, 0755 is intended
 			return err
 		}
-		return os.WriteFile(p, []byte(desktopFile(s)), 0o644)
+		return os.WriteFile(p, []byte(desktopFile(s)), 0o644) // #nosec G306 -- unit and desktop files are world readable by design
 	}
 	p := unitPath(s.ConfigDir)
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil { // #nosec G301 -- user visible directory, 0755 is intended
 		return err
 	}
-	if err := os.WriteFile(p, []byte(unitFile(s)), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(unitFile(s)), 0o644); err != nil { // #nosec G306 -- unit and desktop files are world readable by design
 		return err
 	}
 	return nil

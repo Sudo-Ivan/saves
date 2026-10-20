@@ -116,7 +116,7 @@ func (c *Client) buildManifestEnc(ctx context.Context, app, slot string, src Sou
 			return nil, nil, err
 		}
 		plain, _ = io.ReadAll(fp)
-		fp.Close()
+		_ = fp.Close()
 		if len(plain) <= 64<<10 {
 			ct := c.cfg.Cipher.SealInline(plain)
 			enc = append(enc, api.File{Path: c.cfg.Cipher.PathID(f.path),
@@ -137,7 +137,7 @@ func (c *Client) buildManifestEnc(ctx context.Context, app, slot string, src Sou
 				}
 				ct := c.cfg.Cipher.SealChunk(b)
 				h := api.HashBytes(ct)
-				refs = append(refs, api.ChunkRef{Hash: h, Size: uint32(len(ct))})
+				refs = append(refs, api.ChunkRef{Hash: h, Size: uint32(len(ct))}) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 				loc[hex.EncodeToString(h[:])] = ChunkLoc{Root: rootKey(f.path), Rel: f.rel,
 					Offset: off, Len: int64(len(b)), Sealed: true}
 				off += int64(len(b))
@@ -160,7 +160,7 @@ func (c *Client) buildManifestEnc(ctx context.Context, app, slot string, src Sou
 			part := mct[:n]
 			mct = mct[n:]
 			h := api.HashBytes(part)
-			me.Chunks = append(me.Chunks, api.ChunkRef{Hash: h, Size: uint32(len(part))})
+			me.Chunks = append(me.Chunks, api.ChunkRef{Hash: h, Size: uint32(len(part))}) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 			loc[hex.EncodeToString(h[:])] = ChunkLoc{Meta: true, Len: int64(len(part))}
 		}
 	}

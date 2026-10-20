@@ -1,0 +1,71 @@
+# HA savesd: 3 replicas behind an nginx LB, postgres + minio.
+# h3 notes: UDP must be load balanced to one consistent backend or the
+# QUIC connection breaks on failover; use a UDP-aware LB or pin sessions
+# by source IP. nginx stream module can forward UDP with hash $remote_addr.
+services:
+  migrate:
+    image: saves:latest
+    command: ["savesd", "migrate", "-config", "/etc/saves/config.json"]
+    volumes:
+      - ./config/ha.json:/etc/saves/config.json:ro
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+  savesd:
+    image: saves:latest
+    deploy:
+      replicas: 3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges]
+    tmpfs: [/tmp]
+    command: ["savesd", "serve", "-config", "/etc/saves/config.json"]
+    volumes:
+      - ./config/ha.json:/etc/saves/config.json:ro
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx-ha.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "443:443/tcp"
+      - "443:443/udp"
+    depends_on: [savesd]
+    restart: unless-stopped
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: saves
+      POSTGRES_USER: saves
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./secrets:/run/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saves"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/s3_access
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/s3_secret
+    volumes:
+      - minio-data:/data
+      - ./secrets:/run/secrets:ro
+    restart: unless-stopped
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: ["sh", "-c", "mc alias set m http://minio:9000 $$(cat /run/secrets/s3_access) $$(cat /run/secrets/s3_secret) && mc mb -p m/saves || true"]
+    volumes:
+      - ./secrets:/run/secrets:ro
+volumes:
+  pg-data:
+  minio-data:

@@ -38,7 +38,7 @@ func (c *Client) Events(ctx context.Context) <-chan ServerEvent {
 				case <-ctx.Done():
 				}
 			}
-			j := time.Duration(rand.Int63n(int64(delay) / 4))
+			j := time.Duration(rand.Int63n(int64(delay) / 4)) // #nosec G404 -- jitter only, not security sensitive
 			select {
 			case <-ctx.Done():
 				return

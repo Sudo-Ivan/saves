@@ -600,7 +600,7 @@ func (s *Server) hVaultPut(w http.ResponseWriter, r *http.Request) {
 	if gerr == nil {
 		m := r.Header.Get("If-Match")
 		var v int64
-		fmt.Sscanf(m, `"%d"`, &v)
+		_, _ = fmt.Sscanf(m, `"%d"`, &v)
 		if m != `"-1"` && v != existing.Version {
 			s.writeProblem(w, r, &api.Problem{Code: api.CodeConflict,
 				Title: "version mismatch", Status: 412})

@@ -101,7 +101,7 @@ func (e EnvKeystore) Get(id string) ([]byte, error) {
 		return hexDecode(v)
 	}
 	if f := e.getenv("SAVES_VAULT_KEY_FILE"); f != "" {
-		b, err := os.ReadFile(f)
+		b, err := os.ReadFile(f) // #nosec G304 -- path chosen by the local user or derived from validated config
 		if err != nil {
 			return nil, err
 		}

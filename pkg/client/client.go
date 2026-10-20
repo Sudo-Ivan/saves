@@ -35,8 +35,11 @@ type Config struct {
 	CDC            cdc.Params
 	UserAgent      string
 	Retries        int
-	// HTTP3 forces HTTP/3 transport.
+	// HTTP3 selects the HTTP/3 transport when HTTP is nil.
 	HTTP3 bool
+	// TLS is the client TLS configuration for the HTTP/3 transport; nil
+	// uses the system roots with full certificate verification.
+	TLS *tls.Config
 	// Cipher enables vault encryption (pkg/vault).
 	Cipher Cipher
 }
@@ -67,7 +70,11 @@ func New(c Config) (*Client, error) {
 	if c.HTTP != nil {
 		cl.http = c.HTTP
 	} else if c.HTTP3 {
-		h3 := &http3.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} // #nosec G402 -- caller opts in
+		tc := c.TLS
+		if tc == nil {
+			tc = &tls.Config{MinVersion: tls.VersionTLS13}
+		}
+		h3 := &http3.Transport{TLSClientConfig: tc}
 		cl.h3 = h3
 		cl.http = &http.Client{Transport: h3}
 	} else {

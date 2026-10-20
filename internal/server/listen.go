@@ -144,6 +144,9 @@ func (r *Runner) Listen(ctx context.Context) error {
 	if h2c {
 		protos.SetUnencryptedHTTP2(true)
 	}
+	if err := r.loadTLS(ctx); err != nil {
+		return err
+	}
 	r.srvTCP = &http.Server{
 		Handler:           r.srv.Handler(),
 		Protocols:         protos,

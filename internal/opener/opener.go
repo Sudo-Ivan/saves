@@ -12,7 +12,7 @@ import (
 
 // Runner executes a command; injectable for tests.
 var Runner = func(name string, args ...string) error {
-	return exec.Command(name, args...).Start()
+	return exec.Command(name, args...).Start() // #nosec G204 -- argv slice built by this program, no shell
 }
 
 var schemes = map[string]bool{"http": true, "https": true, "file": true}

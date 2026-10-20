@@ -52,35 +52,35 @@ func Child(pol *Policy, mode string) int {
 		return e
 	})
 	try("write /tmp", true, func() error {
-		return os.WriteFile("/tmp/sbx-probe", []byte("x"), 0o600)
+		return os.WriteFile("/tmp/sbx-probe", []byte("x"), 0o600) // #nosec G303 -- fixed probe file name for the sandbox self-test
 	})
 	try("write /var/tmp", true, func() error {
-		return os.WriteFile("/var/tmp/sbx-probe", []byte("x"), 0o600)
+		return os.WriteFile("/var/tmp/sbx-probe", []byte("x"), 0o600) // #nosec G303 -- fixed probe file name for the sandbox self-test
 	})
 	try("rename out of data dir", true, func() error {
 		src := filepath.Join(os.TempDir(), "sbxsrc")
-		os.WriteFile(src, []byte("x"), 0o600)
+		_ = os.WriteFile(src, []byte("x"), 0o600)
 		return os.Rename(src, "/tmp/sbx-moved")
 	})
 	try("link out", true, func() error {
 		src := filepath.Join(os.TempDir(), "sbxln")
-		os.WriteFile(src, []byte("x"), 0o600)
+		_ = os.WriteFile(src, []byte("x"), 0o600)
 		return os.Link(src, "/tmp/sbx-ln")
 	})
 	try("mkdir /opt", true, func() error {
-		return os.Mkdir("/opt/sbx", 0o755)
+		return os.Mkdir("/opt/sbx", 0o755) // #nosec G301 -- user visible directory, 0755 is intended
 	})
 	try("connect tcp 9", true, func() error {
 		c, e := net.DialTimeout("tcp", "127.0.0.1:9", 1e9)
 		if e == nil {
-			c.Close()
+			_ = c.Close()
 		}
 		return e
 	})
 	try("bind tcp 9", true, func() error {
 		l, e := net.Listen("tcp", "127.0.0.1:9")
 		if e == nil {
-			l.Close()
+			_ = l.Close()
 		}
 		return e
 	})
@@ -88,14 +88,14 @@ func Child(pol *Policy, mode string) int {
 		c, e := net.Dial("udp", "127.0.0.1:9")
 		if e == nil {
 			_, e = c.Write([]byte("x"))
-			c.Close()
+			_ = c.Close()
 		}
 		return e
 	})
 	try("abstract unix", true, func() error {
 		c, e := net.Dial("unix", "\x00sbx")
 		if e == nil {
-			c.Close()
+			_ = c.Close()
 		}
 		return e
 	})
@@ -113,7 +113,7 @@ func Child(pol *Policy, mode string) int {
 	enc.SetIndent("", " ")
 	out := map[string]any{"abi": rep.ABI, "fs": rep.FS, "tcp": rep.TCP,
 		"scoped": rep.Scoped, "mode": rep.Mode, "probes": probes}
-	enc.Encode(out)
+	_ = enc.Encode(out)
 	bad := false
 	for _, pr := range probes {
 		if !pr.OK {

@@ -129,16 +129,16 @@ func ICO(s State, size int) []byte {
 	pngB := PNG(s, size)
 	var b bytes.Buffer
 	b.Write([]byte{0, 0, 1, 0, 1, 0}) // reserved, type=1, count=1
-	w, h := byte(size), byte(size)
+	w, h := byte(size), byte(size)    // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 	if size >= 256 {
 		w, h = 0, 0
 	}
 	b.Write([]byte{w, h, 0, 0, 1, 0, 32, 0})
 	var hdr [4]byte
-	hdr[0] = byte(len(pngB))
-	hdr[1] = byte(len(pngB) >> 8)
-	hdr[2] = byte(len(pngB) >> 16)
-	hdr[3] = byte(len(pngB) >> 24)
+	hdr[0] = byte(len(pngB))       // #nosec G115 -- value bounded by the format or by max_chunk_bytes
+	hdr[1] = byte(len(pngB) >> 8)  // #nosec G115 -- value bounded by the format or by max_chunk_bytes
+	hdr[2] = byte(len(pngB) >> 16) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
+	hdr[3] = byte(len(pngB) >> 24) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 	b.Write(hdr[:])
 	b.Write([]byte{0x16, 0, 0, 0}) // offset 22
 	b.Write(pngB)

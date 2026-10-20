@@ -58,7 +58,7 @@ func New(t testing.TB) *T {
 	s := server.New(svc, m, b, chain, reg, &cfg, server.Options{Clock: c.NowFunc()})
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { m.Close() }) // #nosec G104 -- best effort, error is not actionable
 	return &T{Srv: srv, Meta: m, Blob: b, Clock: c}
 }
 

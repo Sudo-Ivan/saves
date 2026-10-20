@@ -41,7 +41,7 @@ func daemonEndpoint(e *Env) (ctl.Endpoint, error) {
 	if err != nil {
 		return ep, err
 	}
-	json.Unmarshal(b, &ep)
+	_ = json.Unmarshal(b, &ep)
 	return ep, nil
 }
 
@@ -105,8 +105,8 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 		if err != nil {
 			return err
 		}
-		io.Copy(io.Discard, r.Body)
-		r.Body.Close()
+		_, _ = io.Copy(io.Discard, r.Body)
+		_ = r.Body.Close()
 		fmt.Fprintln(e.Stdout, "stopped")
 		return nil
 	case "status":
@@ -115,7 +115,7 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 			return &ExitError{3, fmt.Errorf("daemon not running")}
 		}
 		defer r.Body.Close()
-		io.Copy(e.Stdout, r.Body)
+		_, _ = io.Copy(e.Stdout, r.Body)
 		return nil
 	case "logs":
 		r, err := daemonCall(e, "GET", "/logs?n=200")
@@ -124,7 +124,7 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 		}
 		defer r.Body.Close()
 		if c.json {
-			io.Copy(e.Stdout, r.Body)
+			_, _ = io.Copy(e.Stdout, r.Body)
 			return nil
 		}
 		var ents []struct {
@@ -146,14 +146,14 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 		if err != nil {
 			return err
 		}
-		r.Body.Close()
+		_ = r.Body.Close()
 		return nil
 	case "sync":
 		r, err := daemonCall(e, "POST", "/sync")
 		if err != nil {
 			return err
 		}
-		r.Body.Close()
+		_ = r.Body.Close()
 		return nil
 	case "resolve":
 		if len(fs.Args()) < 2 {
@@ -164,7 +164,7 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 		if err != nil {
 			return err
 		}
-		r.Body.Close()
+		_ = r.Body.Close()
 		return nil
 	case "install", "uninstall", "autostart-status":
 		var c0 common
@@ -197,7 +197,7 @@ func cmdDaemon(ctx context.Context, e *Env, args []string) error {
 			return err
 		}
 		defer r.Body.Close()
-		io.Copy(e.Stdout, r.Body)
+		_, _ = io.Copy(e.Stdout, r.Body)
 		return nil
 	default:
 		return usagef("daemon: unknown %q", sub)
@@ -262,7 +262,7 @@ func runDaemon(ctx context.Context, e *Env) error {
 				}
 				if ev.Type == "head" {
 					var m struct{ App, Slot string }
-					json.Unmarshal(ev.Data, &m)
+					_ = json.Unmarshal(ev.Data, &m)
 					for _, t := range cfg.Tracked {
 						if t.App == m.App && t.Slot == m.Slot {
 							d.Remote(t.App + "/" + t.Slot)
@@ -455,13 +455,13 @@ func init() {
 func runTray(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("tray", flag.ContinueOnError)
 	noStart := fs.Bool("no-start-daemon", false, "")
-	parseArgs(fs, args)
+	_ = parseArgs(fs, args)
 	if tray.Headless() {
 		return &ExitError{1, tray.ErrHeadless}
 	}
 	var c0 common
 	_, paths, _ := c0.loadConfig(e)
-	os.MkdirAll(filepath.Join(paths.State, "runtime"), 0o700)
+	_ = os.MkdirAll(filepath.Join(paths.State, "runtime"), 0o700)
 	release, err := daemonLock(filepath.Join(paths.State, "runtime", "tray.lock"))
 	if err != nil {
 		return err
@@ -470,7 +470,7 @@ func runTray(ctx context.Context, e *Env, args []string) error {
 	if !*noStart {
 		if _, err := daemonCall(e, "GET", "/status"); err != nil {
 			exe, _ := os.Executable()
-			startDetached(e, exe, paths.State)
+			_, _ = startDetached(e, exe, paths.State)
 		}
 	}
 	ui := tray.SysUI{}
@@ -496,7 +496,7 @@ func runTray(ctx context.Context, e *Env, args []string) error {
 					fmt.Sprintf("/logs?since=%d", lastLogID))
 				if lerr == nil {
 					lb, _ := io.ReadAll(lr.Body)
-					lr.Body.Close()
+					_ = lr.Body.Close()
 					var ents []struct {
 						ID    int64  `json:"id"`
 						Level string `json:"level"`
@@ -517,7 +517,7 @@ func runTray(ctx context.Context, e *Env, args []string) error {
 					continue
 				}
 				b, _ := io.ReadAll(r.Body)
-				r.Body.Close()
+				_ = r.Body.Close()
 				if string(b) == last {
 					continue
 				}
@@ -530,7 +530,7 @@ func runTray(ctx context.Context, e *Env, args []string) error {
 					} `json:"games"`
 				}
 				var raw map[string]any
-				json.Unmarshal(b, &raw)
+				_ = json.Unmarshal(b, &raw)
 				st.Reach, _ = raw["server_reachable"].(bool)
 				st.Paused, _ = raw["paused"].(bool)
 				var ts tray.Status
@@ -556,27 +556,27 @@ func runTray(ctx context.Context, e *Env, args []string) error {
 					act, game, _ := tray.Click(id)
 					switch act {
 					case "sync":
-						daemonCallBody(e, "POST", "/sync",
+						_, _ = daemonCallBody(e, "POST", "/sync",
 							fmt.Sprintf(`{"game":%q}`, game))
 					case "pause":
-						daemonCallBody(e, "POST", "/pause",
+						_, _ = daemonCallBody(e, "POST", "/pause",
 							fmt.Sprintf(`{"game":%q}`, game))
 					case "resume":
-						daemonCallBody(e, "POST", "/resume",
+						_, _ = daemonCallBody(e, "POST", "/resume",
 							fmt.Sprintf(`{"game":%q}`, game))
 					case "resolve":
 						parts := strings.SplitN(game, ":", 2)
 						if len(parts) == 2 {
-							daemonCallBody(e, "POST", "/conflicts/resolve",
+							_, _ = daemonCallBody(e, "POST", "/conflicts/resolve",
 								fmt.Sprintf(`{"game":%q,"choice":%q}`, parts[0], parts[1]))
 						}
 					case "quit":
 						tray.Quit()
 					case "stop":
-						daemonCall(e, "POST", "/stop")
+						_, _ = daemonCall(e, "POST", "/stop")
 					case "start":
 						exe, _ := os.Executable()
-						startDetached(e, exe, paths.State)
+						_, _ = startDetached(e, exe, paths.State)
 					}
 				})
 			}

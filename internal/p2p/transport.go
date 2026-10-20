@@ -82,7 +82,7 @@ type rewritingTransport struct {
 	cur   int
 }
 
-func (t *rewritingTransport) Close() error { t.rt.Close(); return nil }
+func (t *rewritingTransport) Close() error { _ = t.rt.Close(); return nil }
 
 func (t *rewritingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	for i := 0; i < len(t.addrs); i++ {

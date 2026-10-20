@@ -1,0 +1,221 @@
+openapi: 3.1.0
+info:
+  title: saves API
+  version: "1.0"
+
+servers:
+  - url: https://{host}
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: sv1_ API token
+  schemas:
+    Problem:
+      type: object
+      properties:
+        code: {type: string}
+        title: {type: string}
+        status: {type: integer}
+    Manifest: {type: object}
+    Snapshot: {type: object}
+
+paths:
+  /v1/me:
+    get:
+      operationId: me
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/register:
+    post:
+      operationId: register
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/vault:
+    get:
+      operationId: vaultGet
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    put:
+      operationId: vaultPut
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    delete:
+      operationId: vaultDelete
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/events:
+    get:
+      operationId: events
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps:
+    get:
+      operationId: apps
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots:
+    get:
+      operationId: slots
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}:
+    get:
+      operationId: slot
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    delete:
+      operationId: slotDelete
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots:
+    post:
+      operationId: begin
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    get:
+      operationId: listSnapshots
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{id}:
+    get:
+      operationId: getSnapshot
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    delete:
+      operationId: deleteSnapshot
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{id}/commit:
+    post:
+      operationId: commit
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{id}/chunks/{hash}:
+    put:
+      operationId: putChunk
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{id}/files/{path}:
+    get:
+      operationId: getFile
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    head:
+      operationId: headFile
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{id}/archive.tar:
+    get:
+      operationId: archive
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/slots/{slot}/snapshots/{a}/diff/{b}:
+    get:
+      operationId: diff
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/apps/{app}/chunks/{hash}:
+    get:
+      operationId: getChunk
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    head:
+      operationId: headChunk
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/users:
+    get:
+      operationId: adminUsers
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/users/{id}:
+    get:
+      operationId: adminUser
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    patch:
+      operationId: adminPatchUser
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    delete:
+      operationId: adminDeleteUser
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/users/{id}/tokens:
+    get:
+      operationId: adminListTokens
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    post:
+      operationId: adminCreateToken
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/tokens/{id}:
+    delete:
+      operationId: adminRevokeToken
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/stats:
+    get:
+      operationId: adminStats
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/admin/gc:
+    post:
+      operationId: adminGC
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/tokens:
+    get:
+      operationId: myTokens
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    post:
+      operationId: myTokenCreate
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/tokens/{id}:
+    delete:
+      operationId: myTokenRevoke
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}

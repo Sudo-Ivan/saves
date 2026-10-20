@@ -28,7 +28,7 @@ func (w *FSWatch) Watch(ctx context.Context, dir string) (<-chan string, error) 
 	}
 	out := make(chan string, 64)
 	add := func(root string) {
-		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error { // #nosec G104 -- best effort, error is not actionable
 			if err != nil {
 				return nil
 			}

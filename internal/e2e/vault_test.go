@@ -12,16 +12,6 @@ import (
 	"testing"
 )
 
-// regAndTrack registers a device and tracks dir via manual track.
-func regAndTrack(t *testing.T, env []string, url, dir string) {
-	if c, out, err := run(t, env, "setup", "--server", url, "--register"); c != 0 {
-		t.Fatalf("setup: %s %s", out, err)
-	}
-	if c, out, err := run(t, env, "track", "add", "--path", dir, "--app", "vgame", "--key", "w"); c != 0 {
-		t.Fatalf("track: %s %s", out, err)
-	}
-}
-
 func TestVaultE2E(t *testing.T) {
 	url, stop := startServer(t)
 	defer stop()

@@ -25,7 +25,7 @@ func vaultKeyStore(e *Env) vault.Keystore { return vault.DefaultKeystore(vaultSt
 
 func vaultPass(e *Env, pf string, msg string) (string, error) {
 	if pf != "" {
-		b, err := os.ReadFile(pf)
+		b, err := os.ReadFile(pf) // #nosec G304 -- path chosen by the local user or derived from validated config
 		if err != nil {
 			return "", err
 		}

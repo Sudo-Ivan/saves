@@ -47,12 +47,12 @@ func Start(ctx context.Context, o Options) (*Hub, error) {
 		return nil, err
 	}
 	if err := m.Migrate(ctx); err != nil {
-		m.Close()
+		_ = m.Close()
 		return nil, err
 	}
 	b, err := fs.New(fs.Options{Root: o.Dir + "/blobs"})
 	if err != nil {
-		m.Close()
+		_ = m.Close()
 		return nil, err
 	}
 	dev := cfg.Quota.Tiers["free"]
@@ -115,4 +115,4 @@ func (h *Hub) RevokeToken(ctx context.Context, id string) error {
 }
 
 // Close shuts resources.
-func (h *Hub) Close() error { h.blob.Close(); return h.meta.Close() }
+func (h *Hub) Close() error { _ = h.blob.Close(); return h.meta.Close() }

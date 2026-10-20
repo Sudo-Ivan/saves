@@ -15,12 +15,12 @@ import (
 
 // startDetached spawns `savesctl daemon run` detached via setsid.
 func startDetached(e *Env, exe string, stateDir string) (int, error) {
-	os.MkdirAll(filepath.Join(stateDir, "runtime"), 0o700)
+	_ = os.MkdirAll(filepath.Join(stateDir, "runtime"), 0o700)
 	cmd := exec.Command(exe, "daemon", "run")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	devnull, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	cmd.Stdin = devnull
-	lf2, _ := os.OpenFile(filepath.Join(stateDir, "runtime", "daemon.log"),
+	lf2, _ := os.OpenFile(filepath.Join(stateDir, "runtime", "daemon.log"), // #nosec G304 -- path chosen by the local user or derived from validated config
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if lf2 != nil {
 		cmd.Stdout, cmd.Stderr = lf2, lf2

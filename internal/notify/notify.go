@@ -80,7 +80,7 @@ type ExecNotifier struct {
 func (e ExecNotifier) Notify(title, body string, u Urgency) error {
 	run := e.Run
 	if run == nil {
-		run = func(n string, a ...string) error { return exec.Command(n, a...).Run() }
+		run = func(n string, a ...string) error { return exec.Command(n, a...).Run() } // #nosec G204 -- argv slice built by this program, no shell
 	}
 	u2 := "normal"
 	if u == Low {

@@ -103,7 +103,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 		fi, _ := fp.Stat()
 		if fi != nil && fi.Size() <= 64<<10 {
 			b, _ := io.ReadAll(fp)
-			fp.Close()
+			_ = fp.Close()
 			ct := c.cfg.Cipher.SealInline(b)
 			size = int64(len(ct))
 			encFiles[i] = api.File{Path: c.cfg.Cipher.PathID(sealed[i].real),
@@ -116,7 +116,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 		}
 		ch, err := cdc.NewChunker(fp, c.cfg.CDC)
 		if err != nil {
-			fp.Close()
+			_ = fp.Close()
 			return nil, err
 		}
 		for {
@@ -125,12 +125,12 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 				break
 			}
 			if err != nil {
-				fp.Close()
+				_ = fp.Close()
 				return nil, err
 			}
 			ct := c.cfg.Cipher.SealChunk(b)
 			h := api.HashBytes(ct)
-			refs = append(refs, api.ChunkRef{Hash: h, Size: uint32(len(ct))})
+			refs = append(refs, api.ChunkRef{Hash: h, Size: uint32(len(ct))}) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 			size += int64(len(ct))
 			totalChunks++
 			if chunkData == nil {
@@ -140,7 +140,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 				chunkData[hex.EncodeToString(h[:])] = ct
 			}
 		}
-		fp.Close()
+		_ = fp.Close()
 		encFiles[i] = api.File{Path: c.cfg.Cipher.PathID(sealed[i].real),
 			Size: size, Mode: 0o600, Chunks: refs}
 		chunkRefsOf[sealed[i].real] = refs
@@ -153,12 +153,12 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 	sh := sha256.New()
 	for i := range sealed {
 		sh.Write([]byte(sealed[i].real))
-		binary.Write(sh, binary.LittleEndian, sealed[i].f.size)
-		binary.Write(sh, binary.LittleEndian, int64(sealed[i].f.mode))
-		binary.Write(sh, binary.LittleEndian, sealed[i].f.mtimeNS)
+		_ = binary.Write(sh, binary.LittleEndian, sealed[i].f.size)
+		_ = binary.Write(sh, binary.LittleEndian, int64(sealed[i].f.mode))
+		_ = binary.Write(sh, binary.LittleEndian, sealed[i].f.mtimeNS)
 		for _, r := range chunkRefsOf[sealed[i].real] {
 			sh.Write(r.Hash[:])
-			binary.Write(sh, binary.LittleEndian, int64(r.Size))
+			_ = binary.Write(sh, binary.LittleEndian, int64(r.Size))
 		}
 	}
 	for _, d := range dirs {
@@ -185,7 +185,7 @@ func (c *Client) encPush(ctx context.Context, app, slot string, src Source, st S
 			part := mct[:n]
 			mct = mct[n:]
 			h := api.HashBytes(part)
-			me.Chunks = append(me.Chunks, api.ChunkRef{Hash: h, Size: uint32(len(part))})
+			me.Chunks = append(me.Chunks, api.ChunkRef{Hash: h, Size: uint32(len(part))}) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 			chunkData[hex.EncodeToString(h[:])] = part
 			totalChunks++
 		}
@@ -292,7 +292,7 @@ func (c *Client) encPullFrom(ctx context.Context, rem Remote, app, slot, snapsho
 				return nil, err
 			}
 			b, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				return nil, err
 			}
@@ -351,7 +351,7 @@ func (c *Client) encPullFrom(ctx context.Context, rem Remote, app, slot, snapsho
 					return nil, err
 				}
 				b, err := io.ReadAll(rc)
-				rc.Close()
+				_ = rc.Close()
 				if err != nil {
 					return nil, err
 				}
@@ -367,10 +367,10 @@ func (c *Client) encPullFrom(ctx context.Context, rem Remote, app, slot, snapsho
 			return nil, err
 		}
 		if _, err := tf.Write(plain); err != nil {
-			tf.Close()
+			_ = tf.Close()
 			return nil, err
 		}
-		tf.Close()
+		_ = tf.Close()
 		if err := root.Rename(rel+".saves-tmp", rel); err != nil {
 			return nil, err
 		}
@@ -384,12 +384,12 @@ func (c *Client) encPullFrom(ctx context.Context, rem Remote, app, slot, snapsho
 		}
 		if r2, err := rootFor(src, rt.Key); err == nil && r2 != nil {
 			_ = r2.MkdirAll(rel, 0o700)
-			r2.Close()
+			_ = r2.Close()
 		}
 	}
 	var st2 State
 	st2.LastSnapshot = snapshot
-	st.Save(app, slot, &st2)
+	_ = st.Save(app, slot, &st2)
 	return res, nil
 }
 

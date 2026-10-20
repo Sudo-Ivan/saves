@@ -206,7 +206,7 @@ func adminUser(ctx context.Context, st meta.Store, args []string) int {
 		for _, u := range us {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%v\n", u.ID, u.Subject, u.Tier, u.Disabled)
 		}
-		w.Flush()
+		_ = w.Flush()
 		return 0
 	case "set-tier":
 		if len(args) < 3 {

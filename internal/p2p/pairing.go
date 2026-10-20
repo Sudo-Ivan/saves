@@ -96,7 +96,7 @@ func writeMsg(w io.Writer, v any) error {
 		return errors.New("p2p: pairing message too large")
 	}
 	var hdr [4]byte
-	binary.BigEndian.PutUint32(hdr[:], uint32(len(b)))
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(b))) // #nosec G115 -- value bounded by the format or by max_chunk_bytes
 	if _, err := w.Write(hdr[:]); err != nil {
 		return err
 	}
@@ -170,17 +170,17 @@ func HostPair(ctx context.Context, conn net.PacketConn, id *Identity, peers *Pee
 				return
 			}
 			if !busy.CompareAndSwap(false, true) {
-				c.CloseWithError(1, "busy")
+				_ = c.CloseWithError(1, "busy")
 				continue
 			}
 			go func(c *quic.Conn) {
 				defer busy.Store(false)
 				if atomic.AddInt64(&attempts, 1) > int64(maxA) {
-					c.CloseWithError(2, "attempts")
+					_ = c.CloseWithError(2, "attempts")
 					return
 				}
 				if p, err := hostHandshake(ctx2, c, codeB, opt.Name, opt.ServiceAddrs, mint, hostCert(id)); err == nil {
-					peers.Add(p)
+					_ = peers.Add(p)
 					done <- p
 					// single use: stop the listener after success.
 					go ln.Close()
@@ -207,7 +207,7 @@ func hostHandshake(ctx context.Context, c *quic.Conn, code []byte, myName string
 	if err != nil {
 		return Peer{}, err
 	}
-	st.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = st.SetDeadline(time.Now().Add(30 * time.Second))
 	// first message: joiner nonce+name
 	var msg1 struct {
 		Nonce string `json:"n"`
@@ -279,7 +279,7 @@ func JoinPair(ctx context.Context, id *Identity, peers *PeerSet, addr, code, nam
 	if err != nil {
 		return PairResult{}, err
 	}
-	st.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = st.SetDeadline(time.Now().Add(30 * time.Second))
 	nonce := make([]byte, 16)
 	rand.Read(nonce)
 	if err := writeMsg(st, map[string]string{
@@ -328,7 +328,7 @@ func JoinPair(ctx context.Context, id *Identity, peers *PeerSet, addr, code, nam
 	if len(svc) == 0 {
 		svc = []string{addr}
 	}
-	peers.Add(Peer{ID: hostID, Name: msg1.Name, Addrs: svc, AddedAt: time.Now()})
+	_ = peers.Add(Peer{ID: hostID, Name: msg1.Name, Addrs: svc, AddedAt: time.Now()})
 	return PairResult{HostID: hostID, HostName: msg1.Name, Token: m2["token"], Addrs: svc}, nil
 }
 

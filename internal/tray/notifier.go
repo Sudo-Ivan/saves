@@ -12,7 +12,6 @@ import (
 type LogTailer struct {
 	N         notify.Notifier
 	Enabled   bool
-	lastID    int64
 	errStreak int
 	seen      map[string]time.Time
 }
@@ -28,7 +27,7 @@ func (t *LogTailer) Feed(level, game, msg string) {
 	if level == "error" {
 		t.errStreak++
 		if t.errStreak >= 3 {
-			t.N.Notify("saves", "repeated sync errors on "+game, notify.Normal)
+			_ = t.N.Notify("saves", "repeated sync errors on "+game, notify.Normal)
 			t.errStreak = 0
 		}
 		return
@@ -42,7 +41,7 @@ func (t *LogTailer) Feed(level, game, msg string) {
 	}
 	t.seen[key] = time.Now()
 	if level == "conflict" {
-		t.N.Notify("saves", "conflict in "+game+" needs a choice", notify.Critical)
+		_ = t.N.Notify("saves", "conflict in "+game+" needs a choice", notify.Critical)
 		t.errStreak = 0
 	}
 }

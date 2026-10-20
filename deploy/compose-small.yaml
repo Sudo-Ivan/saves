@@ -1,0 +1,24 @@
+# Single-host savesd deployment. Product text only.
+services:
+  savesd:
+    image: saves:latest
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges]
+    tmpfs: [/tmp]
+    command: ["savesd", "serve", "-config", "/etc/saves/config.json"]
+    volumes:
+      - saves-data:/data
+      - ./config/small.json:/etc/saves/config.json:ro
+      - ./secrets:/run/secrets:ro
+    ports:
+      - "8443:8443/tcp"
+      - "8443:8443/udp"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+volumes:
+  saves-data:

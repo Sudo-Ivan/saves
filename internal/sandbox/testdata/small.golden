@@ -25,5 +25,6 @@
   "ConnectUDP": [
     53
   ],
+  "BindUDP": null,
   "Scoped": true
 }

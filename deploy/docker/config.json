@@ -1,0 +1,38 @@
+{
+  "listen": {
+    "addr": "0.0.0.0:8080",
+    "tls": {
+      "mode": "none"
+    },
+    "protocols": [
+      "h1"
+    ]
+  },
+  "ops": {
+    "enabled": true,
+    "addr": "0.0.0.0:9090"
+  },
+  "storage": {
+    "blob": {
+      "driver": "fs",
+      "fs": {
+        "root": "/data/blobs"
+      }
+    },
+    "meta": {
+      "driver": "sqlite",
+      "sqlite": {
+        "path": "/data/meta.db"
+      }
+    }
+  },
+  "log": {
+    "format": "json"
+  },
+  "sandbox": {
+    "mode": "off"
+  },
+  "quota": {
+    "allow_unknown_apps": ".*"
+  }
+}

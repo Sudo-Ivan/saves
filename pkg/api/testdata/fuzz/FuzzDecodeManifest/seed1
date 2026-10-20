@@ -1,0 +1,2 @@
+go test fuzz v1
+string("{\"version\":1,\"files\":[]}")

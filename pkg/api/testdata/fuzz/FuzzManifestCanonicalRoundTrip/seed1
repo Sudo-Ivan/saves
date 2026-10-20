@@ -1,0 +1,2 @@
+go test fuzz v1
+string("{\"version\":1,\"files\":[{\"path\":\"a\",\"size\":1,\"mode\":420,\"mtime_ns\":5,\"inline\":\"eA==\"}]}")

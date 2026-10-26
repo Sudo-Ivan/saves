@@ -116,6 +116,8 @@ func (w *webUI) routes(s *Server) {
 	w.route("GET", "/auth/oidc/callback", s.whOIDCCallback)
 	w.route("GET", "/static/{name...}", s.whStatic)
 	w.route("GET", "/robots.txt", s.whRobots)
+	w.route("GET", "/docs", s.whDocs)
+	w.route("GET", "/openapi.yaml", s.whSpec)
 	w.route("POST", "/logout", s.whLogout)
 
 	w.route("GET", "/account", s.whAccount)
@@ -805,6 +807,7 @@ type webPage struct {
 	Contact      string
 	Announce     string
 	AnnounceWarn bool
+	APIDocs      bool
 	Base         string
 	Authed       bool
 	Admin        bool
@@ -824,8 +827,8 @@ func (wv *webReq) render(name string, status int, data any) {
 	pg := webPage{
 		Title: name, InstanceName: sv.SiteName, Base: wv.web.link,
 		Desc: sv.SiteDescription, Terms: sv.TermsURL, Privacy: sv.PrivacyURL,
-		Contact: sv.Contact,
-		CSRF:    wv.csrfToken(), RequestID: requestID(wv.r), Data: data,
+		Contact: sv.Contact, APIDocs: wv.s.Cfg.Web.APIDocs,
+		CSRF: wv.csrfToken(), RequestID: requestID(wv.r), Data: data,
 	}
 	wv.loadSession()
 	if wv.sess != nil && wv.sess.Kind == meta.SessionFull {
@@ -983,5 +986,5 @@ func (s *Server) whStatic(w http.ResponseWriter, r *http.Request) {
 func (s *Server) whRobots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	_, _ = fmt.Fprint(w, "User-agent: *\nAllow: /$\nDisallow: /\n")
+	_, _ = fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /docs\nAllow: /openapi.yaml\nDisallow: /\n")
 }

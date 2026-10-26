@@ -2,9 +2,18 @@ openapi: 3.1.0
 info:
   title: saves API
   version: "1.0"
-
+  license:
+    name: 0BSD
+  description: |
+    Game save synchronization server. Authentication uses sv1_ bearer
+    tokens (POST /v1/tokens or admin token create). Writes are a three
+    step dance: POST a snapshot manifest, PUT the chunks it reports
+    missing, then POST commit with the slot head etag. Reads are plain
+    GET of snapshots, files and chunks with optional Range. Errors are
+    RFC 9457 problems with a stable code field. Rate limited and
+    bandwidth capped calls return 429 with Retry-After.
 servers:
-  - url: https://{host}
+  - url: https://saves.example.com
 
 security:
   - bearerAuth: []
@@ -15,271 +24,1318 @@ components:
       type: http
       scheme: bearer
       description: sv1_ API token
+  parameters:
+    app:
+      name: app
+      in: path
+      required: true
+      schema: {type: string}
+    slot:
+      name: slot
+      in: path
+      required: true
+      schema: {type: string}
+    snapId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    hash:
+      name: hash
+      in: path
+      required: true
+      schema: {type: string, description: 64 lowercase hex sha256}
+    filePath:
+      name: path
+      in: path
+      required: true
+      schema: {type: string}
+    userId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    cursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    limit:
+      name: limit
+      in: query
+      schema: {type: integer, maximum: 200, default: 50}
+    Range:
+      name: Range
+      in: header
+      schema: {type: string, example: "bytes=0-1023"}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: {type: string, description: slot head etag for optimistic concurrency}
+  responses:
+    Problem401:
+      description: authentication failed or missing
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          example: {type: "about:blank", title: "unauthorized", status: 401, code: unauthorized}
+    Problem403:
+      description: forbidden
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          example: {type: "about:blank", title: "forbidden", status: 403, code: forbidden}
+    Problem404:
+      description: not found
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          example: {type: "about:blank", title: "not found", status: 404, code: not_found}
+    Problem409:
+      description: conflict, encrypted vault or head conflict
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          examples:
+            head_conflict: {value: {status: 409, code: conflict, head: "01ABC"}}
+            encrypted: {value: {status: 409, code: encrypted}}
+    Problem429:
+      description: rate limited or bandwidth cap reached, Retry-After is set
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          examples:
+            rate: {value: {status: 429, code: rate_limited}}
+            bw: {value: {status: 429, code: bandwidth_exceeded}}
+    Problem5xx:
+      description: internal or maintenance
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+          example: {status: 503, code: maintenance}
   schemas:
     Problem:
       type: object
       properties:
-        code: {type: string}
+        type: {type: string, format: uri}
         title: {type: string}
         status: {type: integer}
-    Manifest: {type: object}
-    Snapshot: {type: object}
+        detail: {type: string}
+        instance: {type: string}
+        code:
+          type: string
+          enum: [unauthorized, forbidden, not_found, conflict, encrypted,
+                 encryption_required, too_large, quota_exceeded, rate_limited,
+                 bandwidth_exceeded, maintenance, ip_blocked, bad_request,
+                 internal, pending_approval]
+        head: {type: string, description: current head snapshot id on head conflicts}
+        request_id: {type: string}
+    Hash:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    ChunkRef:
+      type: object
+      properties:
+        h: {type: string, description: sha256 hex}
+        n: {type: integer, description: uncompressed size}
+    File:
+      type: object
+      required: [path, size]
+      properties:
+        path: {type: string}
+        size: {type: integer}
+        mode: {type: integer}
+        mtime_ns: {type: integer}
+        chunks:
+          type: array
+          items: {$ref: '#/components/schemas/ChunkRef'}
+        inline:
+          type: string
+          description: whole file content when small enough
+    Manifest:
+      type: object
+      required: [version, files]
+      properties:
+        version: {type: integer, enum: [1]}
+        enc:
+          type: object
+          properties:
+            v: {type: integer}
+            alg: {type: string}
+            kid: {type: string}
+        parent: {type: string}
+        device: {type: string}
+        label: {type: string}
+        dirs:
+          type: array
+          items: {type: string}
+        files:
+          type: array
+          items: {$ref: '#/components/schemas/File'}
+    BeginResponse:
+      type: object
+      properties:
+        id: {type: string}
+        missing:
+          type: array
+          items: {$ref: '#/components/schemas/Hash'}
+        expires_at: {type: string, format: date-time}
+    Snapshot:
+      type: object
+      properties:
+        id: {type: string}
+        app: {type: string}
+        slot: {type: string}
+        label: {type: string}
+        device: {type: string}
+        created_at: {type: string, format: date-time}
+        files: {type: integer}
+        bytes: {type: integer}
+        enc: {type: boolean}
+    AppSummary:
+      type: object
+      properties:
+        app: {type: string}
+        slots: {type: integer}
+        snapshots: {type: integer}
+        bytes: {type: integer}
+    Slot:
+      type: object
+      properties:
+        slot: {type: string}
+        head: {type: string}
+        created_at: {type: string, format: date-time}
+    TierLimits:
+      type: object
+      properties:
+        max_slots: {type: integer}
+        max_snapshots_per_slot: {type: integer}
+        max_files: {type: integer}
+        max_file_bytes: {type: integer}
+        max_snapshot_bytes: {type: integer}
+        max_pending_snapshots: {type: integer}
+        quota_bytes: {type: integer}
+    Bandwidth:
+      type: object
+      properties:
+        enabled: {type: boolean}
+        upload_bytes_per_sec: {type: integer}
+        download_bytes_per_sec: {type: integer}
+        daily_bytes: {type: integer}
+        monthly_bytes: {type: integer}
+        today:
+          type: object
+          properties: {up: {type: integer}, down: {type: integer}}
+        month:
+          type: object
+          properties: {up: {type: integer}, down: {type: integer}}
+        resets:
+          type: object
+          properties:
+            daily_at: {type: string}
+            monthly_at: {type: string}
+    Me:
+      type: object
+      properties:
+        user: {type: object}
+        tier: {type: string}
+        usage:
+          type: object
+          properties:
+            used_bytes: {type: integer}
+            reserved_bytes: {type: integer}
+            quota_bytes: {type: integer}
+        scopes: {type: array, items: {type: string}}
+        anonymous: {type: boolean}
+        require_encryption: {type: boolean}
+        limits:
+          type: object
+          properties:
+            max_files: {type: integer}
+            max_file_bytes: {type: integer}
+            max_snapshot_bytes: {type: integer}
+            inline_max_bytes: {type: integer}
+            min_chunk_bytes: {type: integer}
+            max_chunk_bytes: {type: integer}
+            max_chunks_per_snapshot: {type: integer}
+        tier_limits: {$ref: '#/components/schemas/TierLimits'}
+        bandwidth: {$ref: '#/components/schemas/Bandwidth'}
+    Token:
+      type: object
+      properties:
+        id: {type: string}
+        user_id: {type: string}
+        name: {type: string}
+        scopes: {type: array, items: {type: string}}
+        apps: {type: array, items: {type: string}}
+        allowed_cidrs: {type: array, items: {type: string}}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time, nullable: true}
+        revoked_at: {type: string, format: date-time, nullable: true}
+        last_used_at: {type: string, format: date-time, nullable: true}
+    TokenCreate:
+      type: object
+      properties:
+        name: {type: string}
+        scopes: {type: array, items: {type: string, enum: [read, write, admin]}}
+        apps: {type: array, items: {type: string}}
+        allowed_cidrs: {type: array, items: {type: string}}
+        expires_in: {type: string, description: TTL like 30d or 720h}
+        expires_at: {type: string, format: date-time}
+    TokenCreated:
+      allOf:
+        - {$ref: '#/components/schemas/Token'}
+        - type: object
+          properties: {token: {type: string, description: shown once}}
+    TokenPatch:
+      type: object
+      properties:
+        name: {type: string}
+        expires_at: {type: string, format: date-time, nullable: true}
+        allowed_cidrs: {type: array, items: {type: string}}
+    TokenEvent:
+      type: object
+      properties:
+        id: {type: string}
+        at: {type: string, format: date-time}
+        kind: {type: string}
+        ip: {type: string}
+        actor_user_id: {type: string}
+        user_agent: {type: string}
+        detail: {type: string}
+    TokenStats:
+      type: object
+      properties:
+        total_requests: {type: integer}
+        requests_24h: {type: integer}
+        requests_7d: {type: integer}
+        requests_30d: {type: integer}
+        daily_30d: {type: array, items: {type: integer}}
+        unique_ips_30d: {type: integer}
+        top_ips: {type: array, items: {type: object}}
+        denied_30d: {type: integer}
+        first_use: {type: string, format: date-time}
+        last_use: {type: string, format: date-time}
+    DiffEntry:
+      type: object
+      properties:
+        path: {type: string}
+        kind: {type: string, enum: [added, changed, removed]}
+    VaultRecord:
+      type: object
+      properties:
+        v: {type: integer}
+        ct: {type: string}
+        n: {type: string}
+    RegisterRequest:
+      type: object
+      properties:
+        invite: {type: string}
+    AdminUser:
+      type: object
+      properties:
+        id: {type: string}
+        subject: {type: string}
+        username: {type: string}
+        tier: {type: string}
+        quota_bytes: {type: integer}
+        disabled: {type: boolean}
+        admin: {type: boolean}
+        status: {type: string}
+        used_bytes: {type: integer}
+        snapshots: {type: integer}
+        tokens: {type: integer}
+        sessions: {type: integer}
+        last_active: {type: string, nullable: true}
+    BanRequest:
+      type: object
+      properties:
+        reason: {type: string}
+        until: {type: string, format: date-time}
+        revoke_tokens: {type: boolean}
+    InviteCreate:
+      type: object
+      properties:
+        label: {type: string}
+        max_uses: {type: integer}
+        expires_at: {type: string, format: date-time}
+    InviteCreated:
+      type: object
+      properties:
+        id: {type: string}
+        code: {type: string, description: invite code, shown once}
+    IPBlock:
+      type: object
+      properties:
+        cidr: {type: string}
+        reason: {type: string}
+        expires_at: {type: string, format: date-time}
+    AuditEvent:
+      type: object
+      properties:
+        id: {type: string}
+        at: {type: string, format: date-time}
+        actor_user_id: {type: string}
+        action: {type: string}
+        target_type: {type: string}
+        target_id: {type: string}
+        ip: {type: string}
+        detail: {type: string}
+    SettingsValues:
+      type: object
+      properties:
+        registration.mode: {type: string}
+        registration.require_approval: {type: boolean}
+        site.name: {type: string}
+        maintenance.enabled: {type: boolean}
+        quota.default_tier: {type: string}
+        token.max_ttl: {type: string}
+
+tags:
+  - name: Account
+  - name: Apps and slots
+  - name: Snapshots
+  - name: Chunks and files
+  - name: Tokens
+  - name: Vault
+  - name: Events
+  - name: Admin
 
 paths:
   /v1/me:
     get:
+      tags: [Account]
       operationId: me
+      summary: Current identity and limits
+      description: Returns the authenticated principal, resolved tier and effective limits plus bandwidth usage when enabled.
+      x-codeSamples:
+        - lang: curl
+          source: "curl -H 'Authorization: Bearer sv1_...' https://saves.example.com/v1/me"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: identity
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Me'}
+              example:
+                user: {id: "u1", subject: "steam:76561"}
+                tier: free
+                scopes: [read, write]
+                anonymous: false
+                require_encryption: false
+        '401': {$ref: '#/components/responses/Problem401'}
   /v1/register:
     post:
+      tags: [Account]
       operationId: register
+      summary: Self service signup
+      description: Creates a user and returns an initial token, or 202 pending_approval when approval is required.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
+            example: {invite: "inv_ab12cd"}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '201':
+          description: created, token shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id: {type: string}
+                  token: {type: string}
+                  created_at: {type: string, format: date-time}
+              example: {user_id: "u1", token: "sv1_x", created_at: "2026-01-01T00:00:00Z"}
+        '202':
+          description: account waiting for approval
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {const: pending_approval}
+                  user_id: {type: string}
+              example: {code: pending_approval, user_id: "u1"}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '429': {$ref: '#/components/responses/Problem429'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/vault:
     get:
+      tags: [Vault]
       operationId: vaultGet
+      summary: Get the vault record
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: vault record
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VaultRecord'}
+              example: {v: 1, ct: "Y2lwaGVy", n: "bm9uY2U="}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     put:
+      tags: [Vault]
       operationId: vaultPut
+      summary: Replace the vault record
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VaultRecord'}
+            example: {v: 1, ct: "Y2lwaGVy", n: "bm9uY2U="}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: stored}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '409': {$ref: '#/components/responses/Problem409'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
     delete:
+      tags: [Vault]
       operationId: vaultDelete
+      summary: Delete the vault record
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: deleted}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/events:
     get:
+      tags: [Events]
       operationId: events
+      summary: Live event stream
+      description: Long lived server-sent events stream for snapshot and system events. Exempt from bandwidth accounting.
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: text/event-stream of events
+          content:
+            text/event-stream:
+              schema: {type: string}
+              example: "event: snapshot\ndata: {\"slot\":\"saves\"}\n\n"
+        '401': {$ref: '#/components/responses/Problem401'}
   /v1/apps:
     get:
+      tags: [Apps and slots]
       operationId: apps
+      summary: List apps
+      description: Lists app names with slot and byte totals for the caller.
+      x-codeSamples:
+        - lang: curl
+          source: "curl -H 'Authorization: Bearer sv1_...' https://saves.example.com/v1/apps"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: apps
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AppSummary'}
+              example: [{app: "demo", slots: 2, snapshots: 5, bytes: 1024}]
+        '401': {$ref: '#/components/responses/Problem401'}
   /v1/apps/{app}/slots:
     get:
+      tags: [Apps and slots]
       operationId: slots
+      summary: List slots in an app
+      parameters:
+        - {$ref: '#/components/parameters/app'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Slot'}
+              example: [{slot: "saves", head: "01ABC", created_at: "2026-01-01T00:00:00Z"}]
+        '401': {$ref: '#/components/responses/Problem401'}
   /v1/apps/{app}/slots/{slot}:
     get:
-      operationId: slot
+      tags: [Apps and slots]
+      operationId: slotGet
+      summary: Slot detail with head
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: slot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Slot'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     delete:
+      tags: [Apps and slots]
       operationId: slotDelete
+      summary: Delete a slot and its snapshots
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: deleted}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '409': {$ref: '#/components/responses/Problem409'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/apps/{app}/slots/{slot}/snapshots:
-    post:
-      operationId: begin
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
     get:
-      operationId: listSnapshots
+      tags: [Snapshots]
+      operationId: snapshots
+      summary: List snapshots in a slot
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/cursor'}
+        - {$ref: '#/components/parameters/limit'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: snapshots, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshots:
+                    type: array
+                    items: {$ref: '#/components/schemas/Snapshot'}
+                  cursor: {type: string}
+        '401': {$ref: '#/components/responses/Problem401'}
+    post:
+      tags: [Snapshots]
+      operationId: beginSnapshot
+      summary: Begin a snapshot
+      description: Stores the manifest and returns missing chunks to upload before commit.
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Manifest'}
+            example:
+              version: 1
+              device: "pc"
+              label: "autosave"
+              files: [{path: "save.dat", size: 4, chunks: [{h: "abc...", n: 4}]}]
+      x-codeSamples:
+        - lang: curl
+          source: "curl -X POST -H 'Authorization: Bearer sv1_...' -H 'If-Match: \"head\"' -d @manifest.json https://saves.example.com/v1/apps/demo/slots/saves/snapshots"
+      responses:
+        '200':
+          description: begun, missing chunks listed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BeginResponse'}
+              example: {id: "01SNAP", missing: ["abcdef"], expires_at: "2026-01-01T01:00:00Z"}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '409': {$ref: '#/components/responses/Problem409'}
+        '413': {description: too_large}
+        '429': {$ref: '#/components/responses/Problem429'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/apps/{app}/slots/{slot}/snapshots/{id}:
     get:
-      operationId: getSnapshot
+      tags: [Snapshots]
+      operationId: snapshotGet
+      summary: Snapshot detail
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Snapshot'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     delete:
-      operationId: deleteSnapshot
+      tags: [Snapshots]
+      operationId: snapshotDelete
+      summary: Delete a snapshot
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: deleted}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/apps/{app}/slots/{slot}/snapshots/{id}/commit:
     post:
+      tags: [Snapshots]
       operationId: commit
+      summary: Commit a pending snapshot
+      description: Atomically moves the slot head when If-Match matches the current head.
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      x-codeSamples:
+        - lang: curl
+          source: "curl -X POST -H 'Authorization: Bearer sv1_...' -H 'If-Match: \"01HEAD\"' https://saves.example.com/v1/apps/demo/slots/saves/snapshots/01SNAP/commit"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: committed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  head: {type: string}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '409': {$ref: '#/components/responses/Problem409'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/apps/{app}/slots/{slot}/snapshots/{id}/chunks/{hash}:
     put:
-      operationId: putChunk
+      tags: [Chunks and files]
+      operationId: chunkPut
+      summary: Upload one chunk
+      description: Binary chunk content; the hash must match the sha256 of the body.
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
+        - {$ref: '#/components/parameters/hash'}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      x-codeSamples:
+        - lang: curl
+          source: "curl -X PUT -H 'Authorization: Bearer sv1_...' --data-binary @chunk.bin https://saves.example.com/v1/apps/demo/slots/saves/snapshots/01SNAP/chunks/abcdef"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: stored}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '413': {description: too_large}
+        '416': {description: range not satisfiable}
+        '429': {$ref: '#/components/responses/Problem429'}
+        '503': {$ref: '#/components/responses/Problem5xx'}
   /v1/apps/{app}/slots/{slot}/snapshots/{id}/files/{path}:
     get:
-      operationId: getFile
+      tags: [Chunks and files]
+      operationId: fileGet
+      summary: Download one file
+      description: Reassembles a file from its chunks; supports Range.
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
+        - {$ref: '#/components/parameters/filePath'}
+        - {$ref: '#/components/parameters/Range'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: file bytes
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '206': {description: partial content}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     head:
-      operationId: headFile
+      tags: [Chunks and files]
+      operationId: fileHead
+      summary: File metadata
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
+        - {$ref: '#/components/parameters/filePath'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: headers only}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/apps/{app}/slots/{slot}/snapshots/{id}/archive.tar:
     get:
+      tags: [Snapshots]
       operationId: archive
+      summary: Download a snapshot as tar
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {$ref: '#/components/parameters/snapId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: tar archive
+          content:
+            application/x-tar:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/apps/{app}/slots/{slot}/snapshots/{a}/diff/{b}:
     get:
+      tags: [Snapshots]
       operationId: diff
+      summary: File list diff between two snapshots
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/slot'}
+        - {name: a, in: path, required: true, schema: {type: string}}
+        - {name: b, in: path, required: true, schema: {type: string}}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: diff entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DiffEntry'}
+              example: [{path: "save.dat", kind: changed}]
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '409': {$ref: '#/components/responses/Problem409'}
   /v1/apps/{app}/chunks/{hash}:
     get:
-      operationId: getChunk
+      tags: [Chunks and files]
+      operationId: chunkGet
+      summary: Download one chunk
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/hash'}
+        - {$ref: '#/components/parameters/Range'}
+      x-codeSamples:
+        - lang: curl
+          source: "curl -H 'Authorization: Bearer sv1_...' https://saves.example.com/v1/apps/demo/chunks/abcdef"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: chunk bytes
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '206': {description: partial content}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     head:
-      operationId: headChunk
+      tags: [Chunks and files]
+      operationId: chunkHead
+      summary: Chunk metadata
+      parameters:
+        - {$ref: '#/components/parameters/app'}
+        - {$ref: '#/components/parameters/hash'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/users:
-    get:
-      operationId: adminUsers
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/users/{id}:
-    get:
-      operationId: adminUser
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-    patch:
-      operationId: adminPatchUser
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-    delete:
-      operationId: adminDeleteUser
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/users/{id}/tokens:
-    get:
-      operationId: adminListTokens
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-    post:
-      operationId: adminCreateToken
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/tokens/{id}:
-    delete:
-      operationId: adminRevokeToken
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/stats:
-    get:
-      operationId: adminStats
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
-  /v1/admin/gc:
-    post:
-      operationId: adminGC
-      responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: headers only}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/tokens:
     get:
+      tags: [Tokens]
       operationId: myTokens
+      summary: List caller tokens
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: tokens, secret_hash never included
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Token'}
+        '401': {$ref: '#/components/responses/Problem401'}
     post:
+      tags: [Tokens]
       operationId: myTokenCreate
+      summary: Mint a token
+      description: Scopes can never exceed the creator's own; the plain token is returned once.
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TokenCreate'}
+            example: {name: "laptop", scopes: [read], expires_in: "30d"}
+      x-codeSamples:
+        - lang: curl
+          source: "curl -X POST -H 'Authorization: Bearer sv1_...' -d '{\"name\":\"laptop\",\"scopes\":[\"read\"]}' https://saves.example.com/v1/tokens"
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '201':
+          description: token shown once
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenCreated'}
+              example: {id: "t1", name: "laptop", scopes: [read], token: "sv1_x"}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '429': {$ref: '#/components/responses/Problem429'}
   /v1/tokens/{id}:
     get:
-      operationId: myTokenGet
+      tags: [Tokens]
+      operationId: tokenGet
+      summary: Token detail
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: token
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Token'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
     patch:
-      operationId: myTokenPatch
+      tags: [Tokens]
+      operationId: tokenPatch
+      summary: Edit a token
+      description: Rename, set or clear expiry via null, set or clear allowed_cidrs. Audited per field.
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TokenPatch'}
+            example: {name: "new name", expires_at: null}
+      x-codeSamples:
+        - lang: curl
+          source: "curl -X PATCH -H 'Authorization: Bearer sv1_...' -d '{\"expires_at\":null}' https://saves.example.com/v1/tokens/t1"
       responses:
-        '200': {description: ok}
-        '400': {description: invalid name, expiry or allowed_cidrs}
-        '401': {description: auth}
-        '409': {description: token revoked}
+        '200':
+          description: updated token
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Token'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
+        '409': {$ref: '#/components/responses/Problem409'}
     delete:
+      tags: [Tokens]
       operationId: myTokenRevoke
+      summary: Revoke a token
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200': {description: revoked}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/tokens/{id}/events:
     get:
-      operationId: myTokenEvents
+      tags: [Tokens]
+      operationId: tokenEvents
+      summary: Per-token audit log
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+        - {name: kind, in: query, schema: {type: string}}
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/cursor'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
+        '200':
+          description: events, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/TokenEvent'}
+                  cursor: {type: string}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '401': {$ref: '#/components/responses/Problem401'}
   /v1/tokens/{id}/stats:
     get:
-      operationId: myTokenStats
+      tags: [Tokens]
+      operationId: tokenStats
+      summary: Per-token usage stats
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
       responses:
-        '200': {description: ok}
-        '401': {description: auth}
-
+        '200':
+          description: usage totals and series
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenStats'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/admin/settings:
     get:
-      responses: {'200': {description: settings}}
+      tags: [Admin]
+      operationId: adminSettings
+      summary: Settings schema, values and overrides
+      responses:
+        '200':
+          description: settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema: {type: array, items: {type: object}}
+                  values: {$ref: '#/components/schemas/SettingsValues'}
+                  overrides: {type: array, items: {type: object}}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
     patch:
-      responses: {'200': {description: updated}}
-  /v1/admin/audit:
+      tags: [Admin]
+      operationId: adminSettingsPatch
+      summary: Update runtime settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example: {"site.name": "my saves"}
+      responses:
+        '200': {description: applied, each change audited}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/users:
     get:
-      responses: {'200': {description: audit events}}
-  /v1/admin/invites:
+      tags: [Admin]
+      operationId: adminUsers
+      summary: List users
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string, enum: [active, disabled, banned, pending, deleted]}}
+        - {name: tier, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string}}
+        - {name: offset, in: query, schema: {type: integer}}
+        - {$ref: '#/components/parameters/limit'}
+      responses:
+        '200':
+          description: users and total
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminUser'}
+                  total: {type: integer}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/users/{id}:
     get:
-      responses: {'200': {description: invites}}
-    post:
-      responses: {'201': {description: invite code}}
-  /v1/admin/invites/{id}:
+      tags: [Admin]
+      operationId: adminUser
+      summary: User detail
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200':
+          description: user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminUser'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
+    patch:
+      tags: [Admin]
+      operationId: adminPatchUser
+      summary: Edit a user
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier: {type: string}
+                quota_bytes: {type: integer}
+                disabled: {type: boolean}
+            example: {tier: "pro"}
+      responses:
+        '200': {description: updated}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
     delete:
-      responses: {'200': {description: revoked}}
-  /v1/admin/ip-blocks:
-    get:
-      responses: {'200': {description: ip blocks}}
-    post:
-      responses: {'200': {description: added}}
-  /v1/admin/ip-blocks/{id}:
-    delete:
-      responses: {'200': {description: removed}}
+      tags: [Admin]
+      operationId: adminDeleteUser
+      summary: Delete a user
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: deleted}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/admin/users/{id}/ban:
     post:
-      responses: {'200': {description: banned}}
+      tags: [Admin]
+      operationId: adminBan
+      summary: Ban a user
+      description: Sets a banned status, disables the account, optionally revokes tokens.
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BanRequest'}
+            example: {reason: "abuse", revoke_tokens: true}
+      responses:
+        '200': {description: banned}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/admin/users/{id}/unban:
     post:
-      responses: {'200': {description: unbanned}}
+      tags: [Admin]
+      operationId: adminUnban
+      summary: Unban a user
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: unbanned}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
   /v1/admin/users/{id}/approve:
     post:
-      responses: {'200': {description: approved}}
+      tags: [Admin]
+      operationId: adminApprove
+      summary: Approve a pending user
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: approved}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/admin/users/{id}/reject:
     post:
-      responses: {'200': {description: rejected}}
+      tags: [Admin]
+      operationId: adminReject
+      summary: Reject a pending user
+      description: Deletes the pending account.
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: rejected}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
   /v1/admin/users/{id}/password:
     post:
-      responses: {'200': {description: temporary password}}
+      tags: [Admin]
+      operationId: adminPassword
+      summary: Set or generate a password
+      description: Returns the temporary password once; the user must change it at next login.
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: {type: string}
+                generate: {type: boolean}
+            example: {generate: true}
+      responses:
+        '200':
+          description: new password shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {password: {type: string}}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
+  /v1/admin/users/{id}/tokens:
+    get:
+      tags: [Admin]
+      operationId: adminUserTokens
+      summary: List a user's tokens
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200':
+          description: tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Token'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+    post:
+      tags: [Admin]
+      operationId: adminCreateToken
+      summary: Mint a token for a user
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TokenCreate'}
+            example: {name: "admin issued", scopes: [read]}
+      responses:
+        '201':
+          description: token shown once
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenCreated'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/tokens/{id}:
+    delete:
+      tags: [Admin]
+      operationId: adminRevokeToken
+      summary: Revoke any token
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: revoked}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
+  /v1/admin/invites:
+    get:
+      tags: [Admin]
+      operationId: adminInvites
+      summary: List invites
+      responses:
+        '200':
+          description: invites with computed status
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+    post:
+      tags: [Admin]
+      operationId: adminInviteCreate
+      summary: Create an invite
+      description: Returns the plain code once; only its hash is stored.
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InviteCreate'}
+            example: {label: "beta testers", max_uses: 5}
+      responses:
+        '201':
+          description: invite created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InviteCreated'}
+              example: {id: "i1", code: "inv_a1b2c3d4"}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/invites/{id}:
+    delete:
+      tags: [Admin]
+      operationId: adminInviteRevoke
+      summary: Revoke an invite
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: revoked}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
+  /v1/admin/ip-blocks:
+    get:
+      tags: [Admin]
+      operationId: adminBlocks
+      summary: List IP blocks
+      responses:
+        '200':
+          description: blocks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/IPBlock'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+    post:
+      tags: [Admin]
+      operationId: adminBlockCreate
+      summary: Add an IP block
+      description: Refuses blocks covering the caller's own address or trusted proxies.
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IPBlock'}
+            example: {cidr: "192.0.2.0/24", reason: "abuse"}
+      responses:
+        '200': {description: added}
+        '400': {$ref: '#/components/responses/Problem404'}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/ip-blocks/{id}:
+    delete:
+      tags: [Admin]
+      operationId: adminBlockDelete
+      summary: Remove an IP block
+      parameters:
+        - {$ref: '#/components/parameters/userId'}
+      responses:
+        '200': {description: removed}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+        '404': {$ref: '#/components/responses/Problem404'}
+  /v1/admin/audit:
+    get:
+      tags: [Admin]
+      operationId: adminAudit
+      summary: Instance audit log
+      parameters:
+        - {name: action, in: query, schema: {type: string}}
+        - {name: actor, in: query, schema: {type: string}}
+        - {name: target, in: query, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {$ref: '#/components/parameters/cursor'}
+        - {$ref: '#/components/parameters/limit'}
+      responses:
+        '200':
+          description: audit events, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/AuditEvent'}
+                  cursor: {type: string}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/stats:
+    get:
+      tags: [Admin]
+      operationId: adminStats
+      summary: Aggregate admin stats
+      responses:
+        '200':
+          description: totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: {type: integer}
+                  used_bytes: {type: integer}
+                  snapshots: {type: integer}
+                  slots: {type: integer}
+                  apps: {type: integer}
+                  active_tokens: {type: integer}
+                  active_sessions: {type: integer}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}
+  /v1/admin/gc:
+    post:
+      tags: [Admin]
+      operationId: adminGC
+      summary: Trigger a GC pass
+      responses:
+        '200': {description: gc report}
+        '401': {$ref: '#/components/responses/Problem401'}
+        '403': {$ref: '#/components/responses/Problem403'}

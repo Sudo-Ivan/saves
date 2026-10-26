@@ -1,4 +1,5 @@
 # Protocol
+The authoritative description of every route, schema and error code is api/openapi.yaml (OpenAPI 3.1).
 
 See api/openapi.yaml for the full route list.
 

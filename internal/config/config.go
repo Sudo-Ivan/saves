@@ -37,6 +37,7 @@ type WebConfig struct {
 	Contact         string           `json:"contact" doc:"contact link, https or mailto or relative"`
 	ClientURL       string           `json:"client_url" doc:"where users download the client, empty hides the link"`
 	InstanceName    string           `json:"instance_name" doc:"display name used in pages and TOTP issuer"`
+	APIDocs         bool             `json:"api_docs" doc:"serve the public API reference at /docs"`
 	PublicURL       string           `json:"public_url" doc:"external base URL like https://host/prefix, required for web OIDC"`
 	Homepage        bool             `json:"homepage" doc:"show the landing page at /, otherwise redirect to the sign in page"`
 	PasswordLogin   bool             `json:"password_login" doc:"allow username and password sign in"`
@@ -459,7 +460,7 @@ func Defaults() Config {
 	c.CORS = CORSConfig{Enabled: false, AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"}, MaxAge: Duration(600e9)}
 	c.Metrics = MetricsConfig{Enabled: true, Namespace: "saves"}
 	c.Web = WebConfig{
-		ClientURL: "https://github.com/Sudo-Ivan/saves/releases", InstanceName: "saves", Homepage: true, PasswordLogin: true,
+		ClientURL: "https://github.com/Sudo-Ivan/saves/releases", InstanceName: "saves", Homepage: true, PasswordLogin: true, APIDocs: true,
 		CookieSecure: "auto",
 		Session: WebSessionConfig{
 			Idle: Duration(2 * 3600e9), Absolute: Duration(24 * 3600e9),

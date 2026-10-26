@@ -40,6 +40,7 @@
     {{if .Terms}}<a href="{{.Terms}}">Terms</a>{{end}}
     {{if .Privacy}}<a href="{{.Privacy}}">Privacy</a>{{end}}
     {{if .Contact}}<a href="{{.Contact}}">Contact</a>{{end}}
+    {{if .APIDocs}}<a href="{{.Base}}docs">API</a>{{end}}
     {{if .Authed}}<a href="{{.Base}}account">Account</a>{{else}}<a href="{{.Base}}login">Sign in</a>{{end}}
   </nav>
   <p class="site-footer__fine">{{.InstanceName}} runs on <a href="https://github.com/Sudo-Ivan/saves">saves</a>.</p>

@@ -672,10 +672,6 @@ type reloader struct {
 	logVar *slog.LevelVar
 	runner *server.Runner
 	old    *config.Config
-	setMgr interface {
-		SetFileConfig(*config.Config)
-	}
-	setCfg *config.Config
 }
 
 // reload re-reads and validates the config, applies the reloadable

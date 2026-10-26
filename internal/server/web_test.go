@@ -24,6 +24,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/netx/nettest"
 	"github.com/Sudo-Ivan/saves/internal/quota"
 	"github.com/Sudo-Ivan/saves/internal/service"
+	"github.com/Sudo-Ivan/saves/internal/settings"
 )
 
 type webFixture struct {
@@ -60,7 +61,11 @@ func webSetup(t *testing.T, mutate func(*config.Config)) *webFixture {
 	svc := service.New(m, mem.New(), q, service.Options{Clock: c.NowFunc()})
 	chain := auth.Chain{&auth.TokenAuthenticator{Meta: m, Clock: c.NowFunc()}}
 	reg := &auth.Registration{Mode: auth.RegOpen, Meta: m, DefaultTier: "free", Clock: c.NowFunc()}
-	s := New(svc, m, mem.New(), chain, reg, &cfg, Options{Clock: c.NowFunc()})
+	sm := settings.New(m, &cfg, c.NowFunc())
+	if err := sm.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s := New(svc, m, mem.New(), chain, reg, &cfg, Options{Clock: c.NowFunc(), Settings: sm})
 	srv := httptest.NewServer(s.Handler())
 	cli := &http.Client{
 		Transport: nettest.LoopbackTransport(false),

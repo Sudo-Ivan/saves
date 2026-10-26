@@ -88,3 +88,20 @@ filesystem. Under the default podman and docker seccomp profile the
 Landlock syscalls are allowed, so sandbox mode enforce works inside the
 container; with a custom seccomp profile that filters landlock syscalls,
 use best-effort or the container will refuse to start in enforce mode.
+
+## Admin console
+
+Admin pages require a web admin session. Destructive actions such as
+password replacement and user deletion ask for the admin password again.
+The IP blocklist is enforced at the front of every request, refuses to
+cover the caller or trusted proxies, and audits blocks once per address
+per ten minutes. The audit log records moderation, settings and login
+events with ip and request id but never credentials. Bans disable the
+account, revoke web sessions and optionally revoke API tokens; the token
+cache is invalidated on revocation.
+
+## Raw file route
+
+The snapshot viewer raw route serves file bytes under a sandbox CSP with
+nosniff and attachment disposition for everything except safe image
+types.

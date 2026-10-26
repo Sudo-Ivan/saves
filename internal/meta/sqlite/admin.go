@@ -166,12 +166,12 @@ func (s *Store) ExpireBans(ctx context.Context, now time.Time) ([]string, error)
 		for rows.Next() {
 			var id string
 			if err := rows.Scan(&id); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			ids = append(ids, id)
 		}
-		rows.Close()
+		_ = rows.Close()
 		for _, id := range ids {
 			if _, err := q.ExecContext(ctx, `DELETE FROM user_status WHERE user_id=?`, id); err != nil {
 				return err

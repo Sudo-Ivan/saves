@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/Sudo-Ivan/saves/pkg/api"
-	"github.com/Sudo-Ivan/saves/pkg/client"
 )
 
 // Location is one candidate save path for a game.
@@ -46,19 +45,6 @@ type WinePrefix struct {
 	Dir   string `json:"dir"`
 	Kind  string `json:"kind"` // wine, proton, lutris, heroic, bottles
 	Label string `json:"label"`
-}
-
-// ToClientSource narrows a game's locations to client.Root values
-// keyed by Location.Key with Rel.
-func ToClientSource(g Game) []client.Root {
-	var out []client.Root
-	for _, l := range g.Locations {
-		if l.Unsupported != "" || !l.Exists {
-			continue
-		}
-		out = append(out, client.Root{Key: l.Key, Dir: l.Dir})
-	}
-	return out
 }
 
 // Env supplies host facts for testability.

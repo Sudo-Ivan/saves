@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -318,10 +319,7 @@ func (s *Store) ListAudit(ctx context.Context, f meta.AuditFilter, cursor string
 }
 
 func itoa2(n int) string {
-	if n < 10 {
-		return string(rune('0' + n))
-	}
-	return "1" + string(rune('0'+n-10))
+	return strconv.Itoa(n)
 }
 
 func (s *Store) PurgeAudit(ctx context.Context, before time.Time) error {

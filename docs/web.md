@@ -160,3 +160,25 @@ reverse_proxy 127.0.0.1:8787
 Traefik labels set X-Forwarded-* automatically. Only trusted_cidrs
 must list the proxy. A plain h2c backend works. Enable h1+h2c in
 listen.protocols.
+
+## Snapshot viewer
+
+Each snapshot under /account has a tree view with directories sorted
+first, a file view for text, pretty printed JSON, images rendered inline,
+a hex dump for binary files, and a summary panel for NBT save data.
+Truncated files get a notice. Two snapshots can be diffed with added,
+changed and removed lists plus a line diff for changed text files.
+Encrypted snapshots redirect to the snapshot page.
+
+## API docs
+
+/docs is a self hosted API reference rendered from api/openapi.yaml, and
+/openapi.yaml serves the raw spec. Both are public and controlled by
+web.api_docs.
+
+## Homepage
+
+The homepage doubles as the instance landing page. site.name,
+site.description, site.terms_url, site.privacy_url, site.contact and the
+announcement banner feed it, and the register button shows open or
+invite wording per registration.mode.

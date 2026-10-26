@@ -64,3 +64,9 @@ rules are in deploy/prometheus/alerts.yaml.
 
 Schedule `savesd admin gc` externally only if the built-in GC is
 disabled; run `savesd admin fsck` after restores or crashes.
+
+## Public instances
+
+For a multi user instance exposed to the internet, work through the
+deployment checklist in docs/admin.md (TLS, public_url, registration
+mode, quotas, trusted proxies, backups and admin 2FA).

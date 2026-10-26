@@ -78,7 +78,7 @@ func (rg *Registration) limiterFor(ps float64) *ratelimit.Limiter {
 		if ps <= 0 {
 			rg.Limiter = nil
 		} else {
-			rg.Limiter = ratelimit.New(ps, 1, 1<<16, rg.Clock)
+			rg.Limiter = ratelimit.New(ps, 5, 1<<16, rg.Clock)
 		}
 	}
 	return rg.Limiter

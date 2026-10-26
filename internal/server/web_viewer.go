@@ -259,7 +259,7 @@ func (s *Server) whFileView(w http.ResponseWriter, r *http.Request) {
 	if v.Kind == "" {
 		v.Kind = "binary"
 	}
-	fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &off)
+	_, _ = fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &off)
 	if off < 0 || off >= fh.Size {
 		off = 0
 	}

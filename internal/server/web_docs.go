@@ -358,7 +358,7 @@ func docMarkdown(s string) template.HTML {
 	if inCode {
 		out.WriteString("</code></pre>")
 	}
-	return template.HTML(out.String()) //nolint:gosec -- content escaped
+	return template.HTML(out.String()) // #nosec G203 -- content is escaped before conversion
 }
 
 func inlineMD(s string) string {

@@ -22,6 +22,12 @@ a small edit transfers only the changed data.
   log with hourly usage stats and CSV export.
 - Optional bandwidth limits: per-tier rate throttles and daily or
   monthly transfer caps, off by default.
+- Admin console: overview analytics with 30 day charts, user moderation,
+  invites, IP blocks, runtime settings, audit log, security checkup and
+  system actions (GC, fsck, metadata backup).
+- Self hosted API reference at /docs rendered from api/openapi.yaml.
+- Official SDKs for Rust, C++17, C#, TypeScript, Python and Java under
+  sdk/ (see docs/sdk.md for the shared contract).
 
 ## Install
 
@@ -48,7 +54,7 @@ Client:
 
 docs/protocol.md, docs/cli.md, docs/vault.md, docs/security.md,
 docs/deployment.md, docs/operations.md, docs/tray.md, docs/web.md,
-api/openapi.yaml.
+docs/admin.md, docs/sdk.md, api/openapi.yaml.
 
 ## Status
 

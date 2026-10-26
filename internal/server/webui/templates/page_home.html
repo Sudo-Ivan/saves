@@ -1,13 +1,17 @@
 {{define "main"}}
 <section class="hero">
   <div class="hero__col">
-    <h1 class="hero__title">Your saves, on your server.</h1>
-    <p class="hero__text">{{if .Desc}}{{.Desc}}{{else}}{{.InstanceName}} syncs game saves between your machines.{{end}}</p>
+    <h1 class="hero__title">{{.InstanceName}}</h1>
+    <p class="hero__text">{{if .Desc}}{{.Desc}}{{else}}Keep your game saves safe and in sync across every device you play on.{{end}}</p>
     <div class="hero__actions">
-      <a class="button button--ink" href="{{.Base}}login">Sign in</a>
-      {{if .Data.Register}}<a class="button button--card" href="{{.Base}}register">Create account</a>{{end}}
-      <a class="hero__link" href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
+      {{if .Authed}}<a class="button button--ink" href="{{.Base}}account">Open your account</a>
+      {{else}}<a class="button button--ink" href="{{.Base}}login">Sign in</a>
+      {{if eq .Data.Mode "open"}}<a class="button button--card" href="{{.Base}}register">Create account</a>
+      {{else if eq .Data.Mode "invite"}}<a class="button button--card" href="{{.Base}}register">Join with an invite</a>{{end}}
+      {{end}}
+      {{if .Data.ClientURL}}<a class="hero__link" href="{{.Data.ClientURL}}">Get the client</a>{{end}}
     </div>
+    <p class="hero__meta">{{if eq .Data.Mode "open"}}Registration is open.{{else if eq .Data.Mode "invite"}}Registration needs an invite.{{else}}Registration is closed.{{end}}</p>
   </div>
   <div class="desk-scene" aria-hidden="true">
     <div class="slot-card stock">
@@ -29,46 +33,17 @@
   </div>
 </section>
 
-<section class="section section--paper">
-  <div class="container section__inner">
-    <p class="statement">When the vault is on, the server stores ciphertext only.</p>
-  </div>
-</section>
-
 <section class="section">
   <div class="container split">
     <div class="split__text">
-      <h2>Edits move, not whole files.</h2>
-      <p class="lead">Chunked delta sync sends only what changed.</p>
-    </div>
-    <div class="sheet stock">
-      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
-      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
-      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
-      <p class="sheet__row"><span>Uploads resume</span><span class="fig">always</span></p>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container split">
-    <div class="split__text">
-      <h2>Run your own server.</h2>
-      <p class="lead">Self-hosted, peer to peer, cross-platform.</p>
+      <h2>What an account gets here</h2>
+      <p class="lead">Every account on this server starts with the same allowance.</p>
     </div>
     <div class="rows">
-    <div class="row">
-      <p class="row__title">Your own server</p>
-      <p class="row__text">Run {{.InstanceName}} yourself, on a host you control.</p>
-    </div>
-    <div class="row">
-      <p class="row__title">Peer hosting</p>
-      <p class="row__text">One device can host the node the others sync to.</p>
-    </div>
-    <div class="row">
-      <p class="row__title">Cross-platform clients</p>
-      <p class="row__text">The client syncs saves across platforms.</p>
-    </div>
+      {{if .Data.Quota}}<div class="row"><p class="row__title">{{.Data.Quota}} of storage</p><p class="row__text">Saves are stored once, even when several snapshots share the same data.</p></div>{{end}}
+      {{if .Data.Snaps}}<div class="row"><p class="row__title">History for every slot</p><p class="row__text">Up to {{.Data.Snaps}} snapshots are kept per save slot, across up to {{.Data.Slots}} slots.</p></div>{{end}}
+      <div class="row"><p class="row__title">Private if you want it</p><p class="row__text">Turn on the vault in the client and the server only ever sees ciphertext.</p></div>
+      <div class="row"><p class="row__title">Only changes travel</p><p class="row__text">Uploads send the parts of a save that changed and can resume if they drop.</p></div>
     </div>
   </div>
 </section>

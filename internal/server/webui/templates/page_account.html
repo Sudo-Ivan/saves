@@ -1,35 +1,88 @@
 {{define "main"}}
+{{with .Data}}
 <section class="panel">
   <h1 class="panel__title">Account</h1>
-  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
-  <dl class="detail-list">
-    <dt class="detail-list__key">Username</dt><dd class="detail-list__val">{{.Data.Username}}</dd>
-    <dt class="detail-list__key">Tier</dt><dd class="detail-list__val">{{.Data.Tier}}</dd>
-    <dt class="detail-list__key">Storage used</dt><dd class="detail-list__val">{{fsize .Data.Usage.UsedBytes}}{{if .Data.Usage.QuotaBytes}} of {{fsize .Data.Usage.QuotaBytes}}{{end}}</dd></dd>
-    <dt class="detail-list__key">Snapshots</dt><dd class="detail-list__val">{{.Data.Usage.Snapshots}}</dd>
-    <dt class="detail-list__key">Slots</dt><dd class="detail-list__val">{{.Data.Usage.Slots}}</dd>
-  </dl>
+  {{if .Notice}}<p class="notice notice--info" role="status">{{.Notice}}</p>{{end}}
+  <div class="usage">
+    <div class="usage__gauge">
+      {{if .Donut.Has}}
+      <svg class="donut" viewBox="0 0 120 120" role="img" aria-label="Storage {{.Donut.Pct}} percent used, {{fsize .Usage.UsedBytes}} of {{fsize .Usage.QuotaBytes}}">
+        <circle class="donut__track" cx="60" cy="60" r="{{.Donut.R}}"></circle>
+        {{if .Donut.ResLen}}<circle class="donut__res" cx="60" cy="60" r="{{.Donut.R}}" stroke-dasharray="{{.Donut.ResLen}} {{.Donut.C}}" stroke-dashoffset="{{.Donut.ResOff}}" transform="rotate(-90 60 60)"></circle>{{end}}
+        <circle class="donut__used" cx="60" cy="60" r="{{.Donut.R}}" stroke-dasharray="{{.Donut.UsedLen}} {{.Donut.C}}" transform="rotate(-90 60 60)"></circle>
+        <text class="donut__pct" x="60" y="62" text-anchor="middle" dominant-baseline="middle">{{.Donut.Pct}}%</text>
+      </svg>
+      {{else}}
+      <p class="usage__big">{{fsize .Usage.UsedBytes}}</p>
+      {{end}}
+    </div>
+    <dl class="detail-list usage__list">
+      <dt class="detail-list__key">Account</dt><dd class="detail-list__val">{{.Username}}</dd>
+      <dt class="detail-list__key">Tier</dt><dd class="detail-list__val">{{.Tier}}</dd>
+      <dt class="detail-list__key">Storage</dt><dd class="detail-list__val">{{fsize .Usage.UsedBytes}}{{if .Usage.QuotaBytes}} of {{fsize .Usage.QuotaBytes}}, {{.FreeText}}{{else}}, no quota{{end}}</dd>
+      <dt class="detail-list__key">Slots</dt><dd class="detail-list__val">{{.Usage.Slots}}{{if .SlotCap}} of {{.SlotCap}}{{end}}</dd>
+      <dt class="detail-list__key">Snapshots</dt><dd class="detail-list__val">{{.Usage.Snapshots}}</dd>
+    </dl>
+  </div>
+  {{if .SlotCap}}
+  <div class="meter-block"><p class="meter-block__label">Save slots in use</p>
+    <meter class="meter" min="0" max="100" low="70" high="90" optimum="10" value="{{.SlotPct}}">{{.SlotPct}} percent of your slots are used</meter></div>
+  {{end}}
 </section>
+
 <section class="panel">
   <h2 class="panel__title">Apps</h2>
-  {{if .Data.Apps}}
-  <table class="table">
-    <thead><tr><th class="table__head">App</th><th class="table__head num">Slots</th><th class="table__head num">Snapshots</th></tr></thead>
-    <tbody>
-    {{range .Data.Apps}}
-      <tr class="table__row">
-        <td class="table__cell"><a href="{{$.Base}}account/apps/{{.App}}">{{.App}}</a></td>
-        <td class="table__cell num">{{.Slots}}</td>
-        <td class="table__cell num">{{.Snapshots}}</td>
-      </tr>
-    {{end}}
-    </tbody>
-  </table>
+  {{if .Apps}}
+  <ul class="bars">
+    {{range .Bars}}<li class="bars__row"><a class="bars__name" href="{{$.Base}}account/apps/{{.App}}">{{.App}}</a>
+      <meter class="meter meter--bar" min="0" max="100" value="{{.W}}">{{.Size}}</meter>
+      <span class="bars__size">{{.Size}}</span><span class="bars__meta">{{.Slots}} {{if eq .Slots 1}}slot{{else}}slots{{end}}, {{.Snaps}} {{if eq .Snaps 1}}snapshot{{else}}snapshots{{end}}</span></li>{{end}}
+  </ul>
+  <p class="field__hint">Sizes are the latest save of each slot before deduplication.</p>
   {{else}}
   <div class="empty">
     <p class="empty__title">No apps yet</p>
     <p class="empty__text">Point a saves client at this server and your first save appears here.</p>
-    <a class="button button--card" href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
   </div>{{end}}
 </section>
+
+<section class="panel">
+  <h2 class="panel__title">Sync activity</h2>
+  {{if .ActTotal}}
+  <figure class="chart">
+    <figcaption class="chart__head"><span class="chart__title">Snapshots per day, last 30 days</span><span class="chart__total">{{.ActTotal}} snapshots, {{.ActBytes}}</span></figcaption>
+    <svg class="chart__svg" viewBox="0 0 {{.Activity.W}} {{.Activity.H}}" role="img" aria-label="Snapshots committed per day over the last 30 days, {{.ActTotal}} in total">
+      {{range .Activity.YTicks}}<line class="chart__grid" x1="44" x2="{{$.Data.Activity.W}}" y1="{{.Pos}}" y2="{{.Pos}}"></line><text class="chart__tick" x="40" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+      {{range .Activity.Bars}}<rect class="chart__bar" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Label}}: {{.Value}}</title></rect>{{end}}
+      {{range .Activity.XTicks}}<text class="chart__tick" x="{{.Pos}}" y="{{$.Data.Activity.H}}" text-anchor="middle">{{.Label}}</text>{{end}}
+    </svg>
+  </figure>
+  {{else}}
+  <div class="empty"><p class="empty__title">No syncs in the last 30 days</p><p class="empty__text">New snapshots from your devices show up here.</p></div>
+  {{end}}
+</section>
+
+{{if .BWOn}}
+<section class="panel">
+  <h2 class="panel__title">Transfer</h2>
+  <div class="ops">
+    {{range .BW}}
+    <div class="meter-block"><p class="meter-block__label">{{.Label}}: {{.Used}} of {{.Cap}}</p>
+      {{if .Has}}<meter class="meter" min="0" max="100" low="70" high="90" optimum="10" value="{{.Pct}}">{{.Pct}} percent</meter>{{end}}</div>
+    {{end}}
+  </div>
+  {{if .BWAny}}
+  <figure class="chart">
+    <figcaption class="chart__head"><span class="chart__title">Uploaded and downloaded per day</span></figcaption>
+    <svg class="chart__svg" viewBox="0 0 {{.BWChart.W}} {{.BWChart.H}}" role="img" aria-label="Bytes uploaded and downloaded per day over the last 30 days">
+      {{range .BWChart.YTicks}}<line class="chart__grid" x1="44" x2="{{$.Data.BWChart.W}}" y1="{{.Pos}}" y2="{{.Pos}}"></line><text class="chart__tick" x="40" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+      {{range .BWChart.Bars}}<rect class="chart__bar" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Label}} uploaded: {{.Value}}</title></rect>{{end}}
+      {{range .BWBars2.Bars}}<rect class="chart__bar chart__bar--b" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Label}} downloaded: {{.Value}}</title></rect>{{end}}
+      {{range .BWChart.XTicks}}<text class="chart__tick" x="{{.Pos}}" y="{{$.Data.BWChart.H}}" text-anchor="middle">{{.Label}}</text>{{end}}
+    </svg>
+  </figure>
+  {{end}}
+</section>
+{{end}}
+{{end}}
 {{end}}

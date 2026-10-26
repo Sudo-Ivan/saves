@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -122,7 +123,7 @@ func (s *Service) Diff(ctx context.Context, p auth.Principal, app, slot, idA, id
 			out = append(out, DiffEntry{Path: path, Kind: "added"})
 			continue
 		}
-		if fa.Size != fb.Size || fa.ModTimeNS != fb.ModTimeNS || !sameChunks(fa, fb) {
+		if fa.Size != fb.Size || fa.ModTimeNS != fb.ModTimeNS || !sameChunks(fa, fb) || !bytes.Equal(fa.Inline, fb.Inline) {
 			out = append(out, DiffEntry{Path: path, Kind: "changed"})
 		}
 	}
@@ -131,6 +132,7 @@ func (s *Service) Diff(ctx context.Context, p auth.Principal, app, slot, idA, id
 			out = append(out, DiffEntry{Path: path, Kind: "removed"})
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
 }
 

@@ -31,7 +31,13 @@ func (s *Server) whHome(w http.ResponseWriter, r *http.Request) {
 	}
 	// Homepage is indexable.
 	w.Header().Del("X-Robots-Tag")
-	wv.render("home", 200, struct{ Register bool }{s.Reg != nil && s.Reg.Mode != auth.RegClosed})
+	sv := s.siteVals()
+	hv := homeView{Register: sv.RegMode != "closed", Mode: sv.RegMode, ClientURL: s.Cfg.Web.ClientURL}
+	if t, ok := sv.QuotaTiers[sv.QuotaDefaultTier]; ok {
+		hv.Quota = fmtBytes(float64(t.QuotaBytes))
+		hv.Slots, hv.Snaps = t.MaxSlots, t.MaxSnapshotsPerSlot
+	}
+	wv.render("home", 200, hv)
 }
 
 func (s *Server) whLoginGet(w http.ResponseWriter, r *http.Request) {
@@ -405,4 +411,14 @@ func (s *Server) whLogout(w http.ResponseWriter, r *http.Request) {
 	wv.setCookie(sessCookie, "", -1, false)
 	w.Header().Set("Clear-Site-Data", `"cache"`)
 	http.Redirect(w, r, wv.web.link+"login?signed_out=1", http.StatusSeeOther)
+}
+
+// homeView is the public landing page data.
+type homeView struct {
+	Register  bool
+	Mode      string
+	Quota     string
+	Slots     int
+	Snaps     int
+	ClientURL string
 }

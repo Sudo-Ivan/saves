@@ -5,6 +5,7 @@ package server
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"image/color"
 	"net/http"
 	"net/url"
@@ -19,32 +20,177 @@ import (
 	"github.com/Sudo-Ivan/saves/pkg/api"
 )
 
+type donut struct {
+	R, C, Used, Reserved float64
+	UsedLen, ResLen      float64
+	UsedOff, ResOff      float64
+	Pct                  int
+	Has                  bool
+}
+
+type appBar struct {
+	App, Size string
+	W         int
+	Slots     int
+	Snaps     int
+}
+
+type bwMeter struct {
+	Label, Used, Cap string
+	Pct              int
+	Has              bool
+}
+
+type accountView struct {
+	Username, Tier string
+	Usage          meta.Usage
+	Apps           []meta.AppSummary
+	Notice         string
+	Donut          donut
+	FreeText       string
+	SlotPct        int
+	SlotCap        int
+	SnapCap        int
+	Bars           []appBar
+	Activity       BarChart
+	ActTotal       int
+	ActBytes       string
+	BW             []bwMeter
+	BWOn           bool
+	BWChart        BarChart
+	BWBars2        BarChart
+	BWAny          bool
+}
+
+func pctOf(v, max int64) int {
+	if max <= 0 {
+		return 0
+	}
+	p := int(v * 100 / max)
+	return min(p, 100)
+}
+
 func (s *Server) whAccount(w http.ResponseWriter, r *http.Request) {
 	wv := webFrom(r)
 	if !wv.requireAuth() {
 		return
 	}
-	u, usage, err := s.Svc.Me(r.Context(), wv.principal())
+	ctx := r.Context()
+	p := wv.principal()
+	u, usage, err := s.Svc.Me(ctx, p)
 	if err != nil {
 		s.webServiceError(wv, err)
 		return
 	}
-	apps, err := s.Svc.ListApps(r.Context(), wv.principal())
+	apps, err := s.Svc.ListApps(ctx, p)
 	if err != nil {
 		s.webServiceError(wv, err)
 		return
 	}
-	username := ""
+	v := accountView{Tier: u.Tier, Usage: usage, Apps: apps}
 	if wv.cred != nil {
-		username = wv.cred.Username
+		v.Username = wv.cred.Username
 	}
-	wv.render("account", 200, struct {
-		Username string
-		Tier     string
-		Usage    meta.Usage
-		Apps     []meta.AppSummary
-		Notice   string
-	}{Username: username, Tier: u.Tier, Usage: usage, Apps: apps})
+	if usage.QuotaBytes > 0 {
+		const r0 = 52.0
+		c := 2 * 3.14159265 * r0
+		used := float64(usage.UsedBytes) / float64(usage.QuotaBytes)
+		res := float64(usage.ReservedBytes) / float64(usage.QuotaBytes)
+		used, res = min(used, 1), min(res, 1-min(used, 1))
+		v.Donut = donut{R: r0, C: c, UsedLen: used * c, ResLen: res * c, ResOff: -used * c,
+			Pct: pctOf(usage.UsedBytes, usage.QuotaBytes), Has: true}
+		v.FreeText = fmtBytes(float64(max(usage.QuotaBytes-usage.UsedBytes-usage.ReservedBytes, 0))) + " free"
+	}
+	if e, err := s.Svc.Quota.For(u, "", p.Anonymous); err == nil {
+		v.SlotCap, v.SlotPct = e.MaxSlots, pctOf(int64(usage.Slots), int64(e.MaxSlots))
+		v.SnapCap = e.KeepLast
+	}
+	if ab, err := s.Meta.AppBytes(ctx, u.ID); err == nil {
+		var maxB int64
+		for _, a := range ab {
+			maxB = max(maxB, a.Bytes)
+		}
+		for _, a := range ab {
+			w := 0
+			if maxB > 0 {
+				w = int(a.Bytes * 100 / maxB)
+			}
+			v.Bars = append(v.Bars, appBar{App: a.App, Size: fmtBytes(float64(a.Bytes)), W: w, Slots: a.Slots, Snaps: a.Snapshots})
+		}
+	}
+	if act, err := s.Meta.SnapshotActivity(ctx, u.ID, 30); err == nil {
+		vals := make([]float64, len(act))
+		lbl := make([]string, len(act))
+		var bytes int64
+		for i, d := range act {
+			vals[i] = float64(d.Snapshots)
+			lbl[i] = d.Day.Format("01-02")
+			v.ActTotal += d.Snapshots
+			bytes += d.Bytes
+		}
+		v.Activity = NewBarChart(vals, lbl, 360, 130, compact)
+		v.ActBytes = fmtBytes(float64(bytes))
+	}
+	if s.bw != nil {
+		pol := policy{}
+		if e, err := s.Svc.Quota.For(u, "", p.Anonymous); err == nil {
+			bp := e.Bandwidth
+			pol = policy{upBps: bp.UpBps.Int64(), downBps: bp.DownBps.Int64(), daily: bp.Daily.Int64(), monthly: bp.Monthly.Int64()}
+		}
+		snap := s.bw.Snapshot(ctx, u.ID, pol)
+		get := func(k string) (int64, int64) {
+			m, _ := snap[k].(map[string]any)
+			a, _ := m["up"].(int64)
+			b, _ := m["down"].(int64)
+			if k == "month" {
+				a, _ = m["up"].(int64)
+				b, _ = m["down"].(int64)
+			}
+			return a, b
+		}
+		tu, td := get("today")
+		mu, md := get("month")
+		v.BWOn = true
+		v.BW = []bwMeter{
+			{Label: "Today", Used: fmtBytes(float64(tu + td)), Cap: capText(pol.daily), Pct: pctOf(tu+td, pol.daily), Has: pol.daily > 0},
+			{Label: "This month", Used: fmtBytes(float64(mu + md)), Cap: capText(pol.monthly), Pct: pctOf(mu+md, pol.monthly), Has: pol.monthly > 0},
+		}
+		if rows, err := s.bw.Series(ctx, u.ID, 30); err == nil && len(rows) > 0 {
+			up := make([]float64, len(rows))
+			dn := make([]float64, len(rows))
+			lbl := make([]string, len(rows))
+			for i, rw := range rows {
+				up[i], dn[i] = float64(rw.Up), float64(rw.Down)
+				lbl[i] = fmt.Sprintf("%02d-%02d", rw.Day/100%100, rw.Day%100)
+				if rw.Up+rw.Down > 0 {
+					v.BWAny = true
+				}
+			}
+			a1, a2 := StackedBars(up, dn, lbl, 360, 130, fmtBytes)
+			ref := NewBarChart(addSeries(up, dn), lbl, 360, 130, fmtBytes)
+			a1.YTicks, a1.XTicks = ref.YTicks, ref.XTicks
+			v.BWChart, v.BWBars2 = a1, a2
+		}
+	}
+	wv.render("account", 200, v)
+}
+
+func capText(v int64) string {
+	if v <= 0 {
+		return "no limit"
+	}
+	return fmtBytes(float64(v))
+}
+
+func addSeries(a, b []float64) []float64 {
+	out := make([]float64, len(a))
+	for i := range a {
+		out[i] = a[i]
+		if i < len(b) {
+			out[i] += b[i]
+		}
+	}
+	return out
 }
 
 func (s *Server) whApp(w http.ResponseWriter, r *http.Request) {

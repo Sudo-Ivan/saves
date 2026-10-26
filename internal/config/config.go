@@ -35,6 +35,7 @@ type WebConfig struct {
 	TermsURL        string           `json:"terms_url" doc:"terms of service link"`
 	PrivacyURL      string           `json:"privacy_url" doc:"privacy policy link"`
 	Contact         string           `json:"contact" doc:"contact link, https or mailto or relative"`
+	ClientURL       string           `json:"client_url" doc:"where users download the client, empty hides the link"`
 	InstanceName    string           `json:"instance_name" doc:"display name used in pages and TOTP issuer"`
 	PublicURL       string           `json:"public_url" doc:"external base URL like https://host/prefix, required for web OIDC"`
 	Homepage        bool             `json:"homepage" doc:"show the landing page at /, otherwise redirect to the sign in page"`
@@ -423,6 +424,8 @@ func Defaults() Config {
 		FailedAuthPerSec: 5,
 	}
 	c.Registration = RegistrationConfig{Mode: "closed", InviteMaxUses: 1, PerSec: 0.1}
+	c.Audit = AuditConfig{Enabled: true, Retention: Duration(365 * 24 * 3600e9)}
+	c.Analytics = AnalyticsConfig{Enabled: true}
 	c.Quota = QuotaConfig{
 		DefaultTier:   "free",
 		AnonymousTier: "anon",
@@ -456,7 +459,7 @@ func Defaults() Config {
 	c.CORS = CORSConfig{Enabled: false, AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"}, MaxAge: Duration(600e9)}
 	c.Metrics = MetricsConfig{Enabled: true, Namespace: "saves"}
 	c.Web = WebConfig{
-		InstanceName: "saves", Homepage: true, PasswordLogin: true,
+		ClientURL: "https://github.com/Sudo-Ivan/saves/releases", InstanceName: "saves", Homepage: true, PasswordLogin: true,
 		CookieSecure: "auto",
 		Session: WebSessionConfig{
 			Idle: Duration(2 * 3600e9), Absolute: Duration(24 * 3600e9),

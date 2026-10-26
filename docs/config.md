@@ -253,6 +253,7 @@ browser UI, off by default
 - web.terms_url: terms of service link
 - web.privacy_url: privacy policy link
 - web.contact: contact link, https or mailto or relative
+- web.client_url: where users download the client, empty hides the link
 - web.instance_name: display name used in pages and TOTP issuer
 - web.public_url: external base URL like https://host/prefix, required for web OIDC
 - web.homepage: show the landing page at /, otherwise redirect to the sign in page

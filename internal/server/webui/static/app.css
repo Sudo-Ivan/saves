@@ -695,3 +695,21 @@ fieldset.field .field__check + .field__check { margin-top: 0; }
 .diff__line--gap { color: var(--color-muted); font-style: italic; }
 .tag--added { color: oklch(40% 0.1 150); }
 .tag--removed { color: var(--color-accent-2); }
+
+/* account usage */
+.usage { display: grid; grid-template-columns: auto 1fr; gap: var(--space-lg); align-items: center; }
+@media (max-width: 40rem) { .usage { grid-template-columns: 1fr; justify-items: center; text-align: left; } .usage__list { justify-self: stretch; } }
+.donut { width: 9rem; height: 9rem; display: block; }
+.donut circle { fill: none; stroke-width: 11; }
+.donut__track { stroke: var(--color-paper-3); }
+.donut__used { stroke: var(--color-board); stroke-linecap: butt; }
+.donut__res { stroke: var(--color-accent-2); opacity: 0.55; }
+.donut__pct { font-family: var(--font-outlier); font-size: 18px; fill: var(--color-ink); }
+.usage__big { font-family: var(--font-outlier); font-size: var(--text-2xl); margin: 0; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-xs); }
+.bars__row { display: grid; grid-template-columns: minmax(6rem, 14rem) 1fr auto; gap: var(--space-xs) var(--space-md); align-items: center; }
+.bars__name { overflow-wrap: anywhere; }
+.bars__size { font-family: var(--font-outlier); font-size: var(--text-sm); font-variant-numeric: tabular-nums; text-align: right; }
+.bars__meta { grid-column: 2 / -1; font-size: var(--text-xs); color: var(--color-muted); margin-top: calc(-1 * var(--space-2xs)); }
+.meter--bar { max-width: none; height: 12px; }
+@media (max-width: 40rem) { .bars__row { grid-template-columns: 1fr auto; } .meter--bar { grid-column: 1 / -1; } .bars__meta { grid-column: 1 / -1; } }

@@ -253,6 +253,7 @@ func (s *Service) BeginSnapshot(ctx context.Context, p auth.Principal, app, slot
 	seen := map[api.Hash]bool{}
 	var uniq []api.ChunkRef
 	for _, f := range m.Files {
+		total += int64(len(f.Inline))
 		for _, c := range f.Chunks {
 			total += int64(c.Size)
 			if !seen[c.Hash] {

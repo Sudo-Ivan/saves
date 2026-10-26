@@ -44,6 +44,7 @@ func Run(t *testing.T, factory Factory) {
 	t.Run("TokensAudit", func(t *testing.T) { TokensAudit(t, factory) })
 	t.Run("TokensUsage", func(t *testing.T) { TokensUsage(t, factory) })
 	t.Run("AppViz", func(t *testing.T) { AppViz(t, factory) })
+	t.Run("AdminStore", func(t *testing.T) { AdminStore(t, factory) })
 
 	t.Run("StressQuota", func(t *testing.T) { stressQuota(t, factory) })
 	t.Run("StressGCRace", func(t *testing.T) { stressGCRace(t, factory) })

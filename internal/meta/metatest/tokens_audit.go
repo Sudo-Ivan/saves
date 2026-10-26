@@ -326,3 +326,117 @@ func AppViz(t *testing.T, f Factory) {
 		t.Fatal("BandwidthDay")
 	}
 }
+
+// AdminStore covers settings, invites, status, blocks, audit and stats.
+func AdminStore(t *testing.T, f Factory) {
+	st := f(t, testclock.New(time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC)))
+	ctx := context.Background()
+	u := mkUser(t, st, "adm")
+	now := time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// settings
+	if err := st.PutSetting(ctx, "k1", `"v"`, "actor"); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := st.GetSettings(ctx)
+	if g["k1"].Value != `"v"` || g["k1"].UpdatedBy != "actor" {
+		t.Fatalf("settings=%v", g)
+	}
+	_ = st.DeleteSetting(ctx, "k1")
+	g, _ = st.GetSettings(ctx)
+	if len(g) != 0 {
+		t.Fatal("delete")
+	}
+
+	// invite: create, consume once with max_uses=1, second fails
+	var hash [32]byte
+	copy(hash[:], "invitehash000000000000000000000")
+	if err := st.CreateInvite(ctx, meta.Invite{ID: "iv1", CodeHash: hash, Label: "l", MaxUses: 1, CreatedAt: &now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ConsumeInvite(ctx, hash, u.ID, "1.2.3.4"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ConsumeInvite(ctx, hash, u.ID, "1.2.3.4"); err != meta.ErrInviteInvalid {
+		t.Fatalf("second use: %v", err)
+	}
+	inv, _ := st.ListInvites(ctx)
+	if len(inv) != 1 || inv[0].Status != "exhausted" {
+		t.Fatalf("invites=%v", inv)
+	}
+
+	// user status: ban then expire
+	if err := st.SetUserStatus(ctx, meta.UserStatus{UserID: u.ID, State: "banned", Reason: "r", At: now, By: "adm"}); err != nil {
+		t.Fatal(err)
+	}
+	ug, _ := st.GetUser(ctx, u.ID)
+	if !ug.Disabled {
+		t.Fatal("ban should disable")
+	}
+	until := now.Add(time.Hour)
+	_ = st.SetUserStatus(ctx, meta.UserStatus{UserID: u.ID, State: "banned", At: now, Until: &until})
+	ids, err := st.ExpireBans(ctx, now.Add(2*time.Hour))
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("expire=%v %v", ids, err)
+	}
+	ug, _ = st.GetUser(ctx, u.ID)
+	if ug.Disabled {
+		t.Fatal("unban failed")
+	}
+
+	// ip blocks
+	_ = st.AddIPBlock(ctx, meta.IPBlock{ID: "b1", CIDR: "10.0.0.0/8", CreatedAt: now})
+	blocks, _ := st.ListIPBlocks(ctx)
+	if len(blocks) != 1 {
+		t.Fatal("blocks")
+	}
+	_ = st.DeleteIPBlock(ctx, "b1")
+
+	// audit: insert 5, list with cursor and filter
+	for i := 0; i < 5; i++ {
+		id, err := meta.NewID(now.Add(time.Duration(i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.InsertAudit(ctx, []meta.AuditEvent{{ID: id, At: now.Add(time.Duration(i) * time.Second), Action: "ban", ActorID: "a", TargetID: u.ID, Detail: `{"r":1}`}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ev, cur, err := st.ListAudit(ctx, meta.AuditFilter{}, "", 2)
+	if err != nil || len(ev) != 2 || cur == "" {
+		t.Fatalf("audit page: %v %v", len(ev), err)
+	}
+	ev2, _, _ := st.ListAudit(ctx, meta.AuditFilter{}, cur, 10)
+	if len(ev2) != 3 {
+		t.Fatalf("rest: %d", len(ev2))
+	}
+	bans, _, _ := st.ListAudit(ctx, meta.AuditFilter{Action: "ban"}, "", 10)
+	if len(bans) != 5 {
+		t.Fatalf("filter: %d", len(bans))
+	}
+
+	// stats additive + zero fill + gauges
+	d := meta.BandwidthDay(now)
+	_ = st.AddStats(ctx, []meta.StatsDelta{{Day: d, Signups: 2, BytesIn: 10}})
+	_ = st.AddStats(ctx, []meta.StatsDelta{{Day: d, Signups: 1, BytesIn: 5}})
+	_ = st.SetStatsGauges(ctx, d, 100, 3, 2)
+	series, _ := st.StatsSeries(ctx, d-1, d)
+	if len(series) != 2 || series[1].Signups != 3 || series[1].Storage != 100 {
+		t.Fatalf("series=%v", series)
+	}
+	_ = st.TouchActivity(ctx, []meta.UserDay{{UserID: u.ID, Day: d}})
+	_ = st.TouchActivity(ctx, []meta.UserDay{{UserID: u.ID, Day: d}})
+
+	// admin totals + list
+	tot, err := st.AdminTotals(ctx)
+	if err != nil || tot.Users < 1 {
+		t.Fatalf("totals=%v %v", tot, err)
+	}
+	rows, n, err := st.ListUsersAdmin(ctx, meta.UserFilter{}, 0, 10)
+	if err != nil || n < 1 || len(rows) < 1 {
+		t.Fatalf("list=%v %v", n, err)
+	}
+	if rows[0].Username == "" && rows[0].User.Subject == "" {
+		t.Fatal("row empty")
+	}
+}

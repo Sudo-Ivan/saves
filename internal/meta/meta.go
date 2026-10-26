@@ -71,6 +71,35 @@ type Store interface {
 	ListTokenEvents(ctx context.Context, tokenID, kind, cursor string, limit int) ([]TokenEvent, string, error)
 	TokenStats(ctx context.Context, tokenID string) (TokenStats, error)
 	PurgeTokenAudit(ctx context.Context, before time.Time) error
+	// Admin settings, invites, moderation, audit and stats.
+	GetSettings(ctx context.Context) (map[string]SettingRow, error)
+	PutSetting(ctx context.Context, key, valueJSON, actor string) error
+	DeleteSetting(ctx context.Context, key string) error
+	CreateInvite(ctx context.Context, in Invite) error
+	ListInvites(ctx context.Context) ([]Invite, error)
+	RevokeInvite(ctx context.Context, id string) error
+	ConsumeInvite(ctx context.Context, codeHash [32]byte, userID, ip string) error
+	SetUserStatus(ctx context.Context, st UserStatus) error
+	GetUserStatus(ctx context.Context, userID string) (UserStatus, error)
+	ClearUserStatus(ctx context.Context, userID string) error
+	ListUserStatuses(ctx context.Context, state string) ([]UserStatus, error)
+	ExpireBans(ctx context.Context, now time.Time) ([]string, error)
+	AddIPBlock(ctx context.Context, b IPBlock) error
+	ListIPBlocks(ctx context.Context) ([]IPBlock, error)
+	DeleteIPBlock(ctx context.Context, id string) error
+	PurgeExpiredIPBlocks(ctx context.Context, now time.Time) error
+	InsertAudit(ctx context.Context, ev []AuditEvent) error
+	ListAudit(ctx context.Context, f AuditFilter, cursor string, limit int) ([]AuditEvent, string, error)
+	PurgeAudit(ctx context.Context, before time.Time) error
+	AddStats(ctx context.Context, d []StatsDelta) error
+	SetStatsGauges(ctx context.Context, day int, storageBytes, usersTotal, activeUsers int64) error
+	TouchActivity(ctx context.Context, ud []UserDay) error
+	StatsSeries(ctx context.Context, fromDay, toDay int) ([]StatsRow, error)
+	PurgeStats(ctx context.Context, beforeDay int) error
+	ListUsersAdmin(ctx context.Context, f UserFilter, offset, limit int) ([]AdminUserRow, int, error)
+	AdminTotals(ctx context.Context) (AdminTotals, error)
+	TopUsersByStorage(ctx context.Context, n int) ([]AdminUserRow, error)
+	TopApps(ctx context.Context, n int) ([]AppBytes, error)
 	// Per-app byte totals for visualization.
 	AppBytes(ctx context.Context, userID string) ([]AppBytes, error)
 	// Daily snapshot activity for visualization.
@@ -588,4 +617,99 @@ type BandwidthRow struct {
 func BandwidthDay(t time.Time) int {
 	t = t.UTC()
 	return t.Year()*10000 + int(t.Month())*100 + t.Day()
+}
+
+// ErrInviteInvalid is the single failure for invite consumption.
+var ErrInviteInvalid = errors.New("meta: invite invalid")
+
+// SettingRow is one persisted settings override.
+type SettingRow struct {
+	Key, Value, UpdatedBy string
+	UpdatedAt             time.Time
+}
+
+// Invite is one registration invite.
+type Invite struct {
+	ID, CodePrefix, Label, CreatedBy string
+	CodeHash                         [32]byte
+	MaxUses, Uses                    int
+	ExpiresAt, CreatedAt, RevokedAt  *time.Time
+	Status                           string
+}
+
+// UserStatus is a moderation state (pending or banned).
+type UserStatus struct {
+	UserID, State, Reason, By string
+	At                        time.Time
+	Until                     *time.Time
+}
+
+// IPBlock is one blocked address range.
+type IPBlock struct {
+	ID, CIDR, Reason, CreatedBy string
+	CreatedAt                   time.Time
+	ExpiresAt                   *time.Time
+}
+
+// AuditEvent is one admin or auth audit row.
+type AuditEvent struct {
+	ID                          string
+	At                          time.Time
+	ActorID, ActorLabel, Action string
+	TargetType, TargetID, IP    string
+	Detail, RequestID           string
+}
+
+// AuditFilter narrows ListAudit.
+type AuditFilter struct {
+	Action, ActorID, TargetID, Query string
+	From, To                         time.Time
+}
+
+// StatsDelta adds counters for one day.
+type StatsDelta struct {
+	Day                                                  int
+	Signups, LoginsOK, LoginsFailed, Requests, Errors5xx int64
+	BytesIn, BytesOut, Snapshots                         int64
+}
+
+// StatsRow is one stats_daily row.
+type StatsRow struct {
+	Day                                                       int
+	Signups, LoginsOK, LoginsFailed, Requests, Errors5xx      int64
+	BytesIn, BytesOut, Snapshots, ActiveUsers, Storage, Users int64
+}
+
+// UserDay marks a user active on a day.
+type UserDay struct {
+	UserID string
+	Day    int
+}
+
+// UserFilter narrows ListUsersAdmin.
+type UserFilter struct {
+	Query, State, Tier string
+	AdminOnly          bool
+	Sort               string
+	Desc               bool
+}
+
+// AdminUserRow is one admin list row.
+type AdminUserRow struct {
+	User                                 User
+	Username                             string
+	WebAdmin, TOTP                       bool
+	Status, StatusReason                 string
+	UsedBytes, ReservedBytes, QuotaBytes int64
+	Snapshots, Slots                     int
+	LastActive                           *time.Time
+	Tokens, Sessions                     int
+}
+
+// AdminTotals aggregates dashboard counters.
+type AdminTotals struct {
+	Users, Disabled, PendingUsers, Banned, Deleted int64
+	UsedBytes, Snapshots, Slots, Apps              int64
+	ActiveTokens, ActiveSessions                   int64
+	PendingSnapshots                               int64
 }

@@ -247,6 +247,18 @@ func (a *TokenAuthenticator) storeCache(id string, e cacheEntry) {
 	a.cache[id] = e
 }
 
+// InvalidateUser drops every cached validation that belongs to userID,
+// for example after a ban or a delete.
+func (a *TokenAuthenticator) InvalidateUser(userID string) {
+	a.mu.Lock()
+	for id, e := range a.cache {
+		if e.user.ID == userID {
+			delete(a.cache, id)
+		}
+	}
+	a.mu.Unlock()
+}
+
 // Invalidate drops the cache entry for id, e.g. after local revocation.
 func (a *TokenAuthenticator) Invalidate(id string) {
 	a.mu.Lock()

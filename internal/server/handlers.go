@@ -419,6 +419,9 @@ func (s *Server) hAdminPatchUser(w http.ResponseWriter, r *http.Request) {
 		patch.QuotaBytes = &meta.Optional[int64]{Set: true, Value: *in.QuotaBytes}
 	}
 	u, err := s.Svc.AdminPatchUser(r.Context(), p, r.PathValue("id"), patch)
+	if err == nil {
+		s.invalidateUser(r.PathValue("id"))
+	}
 	s.respond(w, r, u, err)
 }
 
@@ -431,6 +434,7 @@ func (s *Server) hAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, err)
 		return
 	}
+	s.invalidateUser(r.PathValue("id"))
 	w.WriteHeader(204)
 }
 

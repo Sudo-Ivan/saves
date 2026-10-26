@@ -245,7 +245,11 @@ func (s *Service) CreateToken(ctx context.Context, p auth.Principal, userID, nam
 			}
 		}
 	}
-	if s.TokenMaxPerUser > 0 {
+	maxPer := s.TokenMaxPerUser
+	if s.TokenPolicy != nil {
+		_, _, maxPer = s.TokenPolicy()
+	}
+	if maxPer > 0 {
 		toks, err := s.Meta.ListTokens(ctx, userID)
 		if err != nil {
 			return out, mapErr(err)
@@ -256,7 +260,7 @@ func (s *Service) CreateToken(ctx context.Context, p auth.Principal, userID, nam
 				active++
 			}
 		}
-		if active >= s.TokenMaxPerUser {
+		if active >= maxPer {
 			return out, &api.Problem{Code: api.CodeConflict, Title: "token limit reached", Status: 409}
 		}
 	}
@@ -369,7 +373,11 @@ const MaxTokenLifetime = 10 * 365 * 24 * time.Hour
 // expiry, which max_ttl turns into now+max_ttl when creating and
 // rejects when editing.
 func (s *Service) ResolveExpiry(exp *time.Time, creating bool) (*time.Time, error) {
-	return ResolveTokenExpiry(s.now(), s.TokenMaxTTL, exp, creating)
+	maxTTL := s.TokenMaxTTL
+	if s.TokenPolicy != nil {
+		maxTTL, _, _ = s.TokenPolicy()
+	}
+	return ResolveTokenExpiry(s.now(), maxTTL, exp, creating)
 }
 
 // ResolveTokenExpiry is ResolveExpiry with explicit inputs for callers

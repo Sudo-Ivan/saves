@@ -169,12 +169,14 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 		if dis {
 			_, _ = s.Meta.DeleteUserSessions(r.Context(), id, nil)
 		}
+		s.invalidateUser(id)
 	case "delete":
 		if err := s.Svc.AdminDeleteUser(r.Context(), p, id); err != nil {
 			fail(err)
 			return
 		}
 		_, _ = s.Meta.DeleteUserSessions(r.Context(), id, nil)
+		s.invalidateUser(id)
 		audit()
 		http.Redirect(w, r, wv.web.link+"admin/users", http.StatusSeeOther)
 		return

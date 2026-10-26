@@ -6,6 +6,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -52,15 +53,17 @@ type Server struct {
 	principalRL *ratelimit.Limiter
 	accessLog   bool
 	ready       chan struct{}
+	startedAt   time.Time
 	draining    atomic.Bool
 	web         *webUI
 	bw          *bwManager
 	settings    interface {
 		Effective() settings.Values
 	}
-	auditor *Auditor
-	blocks  *ipBlocks
-	gc      *gc.Collector
+	auditor   *Auditor
+	blocks    *ipBlocks
+	collector *Collector
+	gc        *gc.Collector
 
 	oidcMu sync.Mutex
 	oidc   *webOIDC
@@ -97,6 +100,7 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 		accessLog:   cfg.Log.Access,
 		ready:       make(chan struct{}),
 		settings:    o.Settings,
+		startedAt:   o.Clock(),
 	}
 	if s.ipLimit == nil {
 		s.ipLimit = ratelimit.New(50, 100, 1<<16, o.Clock)
@@ -114,6 +118,10 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 	if cfg.Audit.Enabled {
 		s.auditor = NewAuditor(m, o.Clock)
 		s.auditor.Start()
+	}
+	if cfg.Analytics.Enabled {
+		s.collector = NewCollector(m, o.Clock)
+		s.collector.Start()
 	}
 	if cfg.Bandwidth.Enabled {
 		s.bw = newBwManager(m, o.Clock)
@@ -269,6 +277,13 @@ func (s *Server) siteVals() settings.Values {
 
 // SetGC wires the GC for admin-triggered runs.
 func (s *Server) SetGC(g *gc.Collector) { s.gc = g }
+
+// CloseCollector flushes and stops the analytics collector when enabled.
+func (s *Server) CloseCollector() {
+	if s.collector != nil {
+		s.collector.Close(context.Background())
+	}
+}
 
 // CloseBandwidth flushes and stops the bandwidth manager when enabled.
 func (s *Server) CloseBandwidth() {

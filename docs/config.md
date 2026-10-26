@@ -167,6 +167,16 @@ admin and auth audit log
 
 - audit.enabled: record admin and auth audit events
 - audit.retention: how long audit rows are kept
+## analytics
+
+request and usage metrics collector
+
+- analytics.enabled: collect daily usage stats
+## admin
+
+administrative operations
+
+- admin.backup_dir: directory for sqlite metadata backups, empty off
 ## quota
 
 tiers, defaults, and per app policy

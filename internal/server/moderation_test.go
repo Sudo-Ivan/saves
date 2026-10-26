@@ -132,3 +132,30 @@ func TestIPBlockEnforce(t *testing.T) {
 		t.Fatal("unrelated ip should work")
 	}
 }
+
+func TestCollector(t *testing.T) {
+	f := webSetup(t, nil)
+	c := NewCollector(f.m, f.clock.NowFunc())
+	c.Count(200, 10, 5)
+	c.Count(500, 0, 0)
+	c.Signup()
+	c.Login(true)
+	c.Active("u1")
+	c.Active("u1")
+	c.Flush(context.Background())
+	d := meta.BandwidthDay(f.clock.Now())
+	rows, _ := f.m.StatsSeries(context.Background(), d, d)
+	if len(rows) != 1 || rows[0].Requests != 2 || rows[0].Errors5xx != 1 || rows[0].Signups != 1 {
+		t.Fatalf("stats=%v", rows)
+	}
+	// repeated flush does not double count
+	c.Flush(context.Background())
+	rows2, _ := f.m.StatsSeries(context.Background(), d, d)
+	if rows2[0].Requests != 2 {
+		t.Fatal("double count")
+	}
+	// live ring has entries
+	if len(c.Live()) == 0 {
+		t.Fatal("empty ring")
+	}
+}

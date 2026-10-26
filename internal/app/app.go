@@ -36,6 +36,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/sandbox"
 	"github.com/Sudo-Ivan/saves/internal/server"
 	"github.com/Sudo-Ivan/saves/internal/service"
+	"github.com/Sudo-Ivan/saves/internal/settings"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -397,14 +398,57 @@ func cmdServe(args []string) int {
 			}
 		}
 	}
-	srv := server.New(svc, m, b, chain, reg, cfg, server.Options{Logger: logger, Metrics: met})
+	setMgr := settings.New(m, cfg, time.Now)
+	if err := setMgr.Load(context.Background()); err != nil {
+		logger.Warn("settings load", "err", err)
+	}
+	setMgr.Start()
+	defer setMgr.Close()
+	svc.TokenPolicy = func() (time.Duration, time.Duration, int) {
+		v := setMgr.Effective()
+		return v.TokenMaxTTL.Duration(), v.TokenDefaultTTL.Duration(), v.TokenMaxPerUser
+	}
+	if reg != nil {
+		reg.Effective = func() auth.RegistrationSettings {
+			v := setMgr.Effective()
+			mode := auth.RegClosed
+			switch v.RegMode {
+			case "invite":
+				mode = auth.RegInvite
+			case "open":
+				mode = auth.RegOpen
+			}
+			return auth.RegistrationSettings{Mode: mode, PerSec: v.RegPerSec,
+				RequireApproval: v.RegApproval, MaxPerIPDay: v.RegMaxPerIPDay}
+		}
+		reg.Audit = func(ctx context.Context, e meta.AuditEvent) { _ = m.InsertAudit(ctx, []meta.AuditEvent{e}) }
+	}
+	srv := server.New(svc, m, b, chain, reg, cfg, server.Options{Logger: logger, Metrics: met, Settings: setMgr})
+	setMgr.Subscribe(func(_, nv settings.Values) {
+		ov := *cfg
+		if nv.QuotaTiers != nil {
+			ov.Quota.Tiers = nv.QuotaTiers
+		}
+		ov.Quota.DefaultTier = nv.QuotaDefaultTier
+		q.Reload(&ov)
+		srv.SetLoginLimit(nv.LoginPerMin)
+	})
+	if cfg.Analytics.Enabled {
+		defer srv.CloseCollector()
+	}
 	if cfg.Bandwidth.Enabled {
 		defer srv.CloseBandwidth()
+	}
+	if cfg.Analytics.Enabled {
+		defer srv.CloseCollector()
 	}
 	if cfg.Bandwidth.Enabled {
 		defer srv.CloseBandwidth()
 	}
 	srv.Version = Version
+	if cfg.Analytics.Enabled {
+		defer srv.CloseCollector()
+	}
 	if cfg.Bandwidth.Enabled {
 		defer srv.CloseBandwidth()
 	}

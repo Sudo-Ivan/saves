@@ -97,6 +97,9 @@ func (s *Server) requestLog(next http.Handler) http.Handler {
 		if s.accessLog {
 			s.Log.Info("request", "id", id, "method", r.Method, "path", r.URL.Path,
 				"status", sw.status, "ip", s.clientIP(r), "ms", time.Since(t0).Milliseconds())
+			if s.collector != nil {
+				s.collector.Count(int64(sw.status), 0, 0)
+			}
 		}
 	})
 }

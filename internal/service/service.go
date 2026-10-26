@@ -56,6 +56,8 @@ type Service struct {
 	TokenMaxPerUser int
 	// TokenMaxTTL caps token lifetime (0 unlimited).
 	TokenMaxTTL time.Duration
+	// TokenPolicy returns live token limits when set.
+	TokenPolicy func() (maxTTL, defTTL time.Duration, maxPer int)
 	// AuditEnabled writes token audit events.
 	AuditEnabled bool
 

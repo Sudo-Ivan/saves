@@ -264,6 +264,13 @@ func (l *usernameLock) locked(name string) bool {
 	return ok && l.clock().Before(e.until)
 }
 
+// SetLoginLimit rebuilds the per-IP login limiter on settings change.
+func (s *Server) SetLoginLimit(perMin float64) {
+	if s.web != nil {
+		s.web.loginLimiter = ratelimit.New(perMin/60, perMin, 1<<16, s.Clock)
+	}
+}
+
 // Locked lists usernames currently locked with their unlock time.
 func (l *usernameLock) Locked() map[string]time.Time {
 	l.mu.Lock()
@@ -571,7 +578,11 @@ func (wv *webReq) loadSession() {
 	}
 	now := wv.s.Clock()
 	cfg := wv.s.Cfg.Web.Session
-	if !now.Before(ws.ExpiresAt) || !now.Before(ws.LastSeenAt.Add(cfg.Idle.Duration())) {
+	idle := cfg.Idle.Duration()
+	if v := wv.s.siteVals(); v.SessionIdle > 0 {
+		idle = v.SessionIdle.Duration()
+	}
+	if !now.Before(ws.ExpiresAt) || !now.Before(ws.LastSeenAt.Add(idle)) {
 		_ = wv.s.Meta.DeleteWebSession(wv.r.Context(), hash)
 		return
 	}

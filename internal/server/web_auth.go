@@ -164,7 +164,7 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := wv.createSession(u.ID, meta.SessionFull, meta.SessionMethodPassword,
-		cred.Admin, s.Cfg.Web.Session.Absolute.Duration()); err != nil {
+		cred.Admin, s.siteVals().SessionAbsolute.Duration()); err != nil {
 		s.Log.Error("web session create", "err", err)
 		wv.errorPage(500)
 		return
@@ -285,7 +285,7 @@ func (wv *webReq) finish2fa(w http.ResponseWriter, r *http.Request, cred meta.We
 	wv.sess = nil
 	wv.sessDone = true
 	_ = wv.createSession(wv.user.ID, meta.SessionFull, meta.SessionMethodPassword,
-		cred.Admin, wv.s.Cfg.Web.Session.Absolute.Duration())
+		cred.Admin, wv.s.siteVals().SessionAbsolute.Duration())
 	wv.s.Log.Info("web login", "user", wv.user.ID, "method", "password+2fa", "ip", wv.s.clientIP(r))
 }
 

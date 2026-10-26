@@ -14,6 +14,8 @@ type Config struct {
 	Auth         AuthConfig         `json:"auth" doc:"authentication method chain"`
 	Registration RegistrationConfig `json:"registration" doc:"self service user registration"`
 	Audit        AuditConfig        `json:"audit" doc:"admin and auth audit log"`
+	Analytics    AnalyticsConfig    `json:"analytics" doc:"request and usage metrics collector"`
+	Admin        AdminConfig        `json:"admin" doc:"administrative operations"`
 	Quota        QuotaConfig        `json:"quota" doc:"tiers, defaults, and per app policy"`
 	Limits       LimitsConfig       `json:"limits" doc:"manifest, chunk, and request limits"`
 	GC           GCConfig           `json:"gc" doc:"garbage collection schedule"`
@@ -472,4 +474,14 @@ func Defaults() Config {
 type AuditConfig struct {
 	Enabled   bool     `json:"enabled" doc:"record admin and auth audit events"`
 	Retention Duration `json:"retention" doc:"how long audit rows are kept"`
+}
+
+// AnalyticsConfig controls the usage metrics collector.
+type AnalyticsConfig struct {
+	Enabled bool `json:"enabled" doc:"collect daily usage stats"`
+}
+
+// AdminConfig controls admin operations.
+type AdminConfig struct {
+	BackupDir string `json:"backup_dir" doc:"directory for sqlite metadata backups, empty off"`
 }

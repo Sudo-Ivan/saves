@@ -36,10 +36,26 @@ func (s *Server) Ban(ctx context.Context, actor, userID, reason string, until *t
 	}
 	s.audit(ctx, actor, actBan, "user", userID, fmt.Sprintf(`{"reason":%q}`, reason))
 	s.revokeWebSessions(ctx, userID)
-	if revokeTokens && s.Svc.TokenInvalidator != nil {
-		s.Svc.TokenInvalidator(userID)
+	if revokeTokens {
+		if toks, err := s.Meta.ListTokens(ctx, userID); err == nil {
+			for _, t := range toks {
+				if t.RevokedAt == nil {
+					_ = s.Meta.RevokeToken(ctx, t.ID)
+				}
+			}
+		}
 	}
+	s.invalidateUser(userID)
 	return nil
+}
+
+// invalidateUser drops cached token validations for a user on this node.
+func (s *Server) invalidateUser(userID string) {
+	for _, a := range s.Auth {
+		if ta, ok := a.(*auth.TokenAuthenticator); ok {
+			ta.InvalidateUser(userID)
+		}
+	}
 }
 
 // Unban clears the status and re-enables the user.
@@ -48,6 +64,7 @@ func (s *Server) Unban(ctx context.Context, actor, userID string) error {
 		return err
 	}
 	s.audit(ctx, actor, actUnban, "user", userID, "")
+	s.invalidateUser(userID)
 	return nil
 }
 
@@ -165,24 +182,22 @@ type ipBlocks struct {
 	list   []netip.Prefix
 	fresh  time.Time
 	denied map[string]time.Time
-	self   netip.Prefix
 }
 
 // AddIPBlock adds a block; self and trusted proxies are refused.
 func (s *Server) AddIPBlock(ctx context.Context, actor, cidr, reason string, expires *time.Time) error {
 	p, err := parseBlockCIDR(cidr)
 	if err != nil {
-		return err
+		return &api.Problem{Code: api.CodeBadRequest, Title: "invalid address or CIDR", Status: 400}
 	}
-
 	for _, tp := range s.Cfg.TrustedProxyPrefixes() {
 		if p.Overlaps(tp) {
-			return errors.New("block overlaps a trusted proxy")
+			return &api.Problem{Code: api.CodeBadRequest, Title: "block overlaps a trusted proxy", Status: 400}
 		}
 	}
 	if ip, ok := ctx.Value(clientIPKey{}).(netip.Addr); ok {
 		if p.Contains(ip) {
-			return errors.New("block covers your own address")
+			return &api.Problem{Code: api.CodeBadRequest, Title: "block covers your own address", Status: 400}
 		}
 	}
 	id, _ := meta.NewID(s.now())

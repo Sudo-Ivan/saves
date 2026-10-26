@@ -672,3 +672,26 @@ fieldset.field .field__check + .field__check { margin-top: 0; }
 .settings-group__title { grid-column: 1 / -1; padding-bottom: var(--space-2xs); border-bottom: 1px solid var(--color-rule); }
 .setting { max-width: none; }
 .setting .field__hint { margin-top: var(--space-3xs); }
+
+/* snapshot viewer */
+.tree, .tree .tree { list-style: none; margin: 0; padding: 0; }
+.tree .tree { margin-left: var(--space-md); padding-left: var(--space-sm); border-left: 1px solid var(--color-rule); }
+.tree__item { margin: 0; }
+.tree__name { display: flex; justify-content: space-between; gap: var(--space-md); align-items: baseline; padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-input); text-decoration: none; color: var(--color-ink); cursor: pointer; }
+.tree__name:hover { background: var(--color-paper-2); }
+.tree__label { overflow-wrap: anywhere; }
+.tree__file .tree__label { text-decoration: underline; text-underline-offset: 0.16em; }
+.tree__dir > summary { list-style-position: inside; }
+.tree__dir > summary .tree__label { font-weight: 600; }
+.tree__meta { font-size: var(--text-xs); color: var(--color-muted); font-family: var(--font-outlier); white-space: nowrap; }
+.plain-list { margin: 0; padding-left: var(--space-lg); }
+.preview__img { max-width: 100%; height: auto; border: 1px solid var(--color-rule-2); border-radius: var(--radius-input); background: var(--color-paper-2); }
+.preview__text, .preview__hex { margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--color-rule-2); border-radius: var(--radius-input); background: var(--color-paper); font-family: var(--font-outlier); font-size: var(--text-xs); line-height: 1.55; overflow-x: auto; max-height: 36rem; overflow-y: auto; white-space: pre; tab-size: 4; }
+.preview__hex { white-space: pre; }
+.diff { white-space: pre; }
+.diff__line { display: block; }
+.diff__line--add { background: oklch(94% 0.04 150); }
+.diff__line--del { background: oklch(94% 0.04 25); }
+.diff__line--gap { color: var(--color-muted); font-style: italic; }
+.tag--added { color: oklch(40% 0.1 150); }
+.tag--removed { color: var(--color-accent-2); }

@@ -1,0 +1,23 @@
+{{define "main"}}
+{{with .Data}}
+<section class="panel">
+  <h1 class="panel__title">Changes between snapshots</h1>
+  <nav class="breadcrumbs"><a href="{{.Back}}">Snapshot {{.A}}</a> to {{.B}}</nav>
+  <p>{{index .Counts "added"}} added, {{index .Counts "changed"}} changed, {{index .Counts "removed"}} removed.</p>
+  {{if .Entries}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Change</th><th class="table__head">File</th><th class="table__head"></th></tr></thead>
+    <tbody>{{range .Entries}}<tr class="table__row"><td class="table__cell"><span class="tag tag--{{.Kind}}">{{.Kind}}</span></td><td class="table__cell"><a href="{{.Href}}">{{.Path}}</a></td><td class="table__cell table__cell--actions">{{if .Compare}}<a class="button button--small" href="{{.Compare}}">Show lines</a>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty"><p class="empty__title">No differences</p><p class="empty__text">Both snapshots hold the same files.</p></div>{{end}}
+</section>
+{{if .TextPath}}
+<section class="panel">
+  <h2 class="panel__title">{{.TextPath}}</h2>
+  {{if .Skipped}}<p class="notice notice--warn" role="status">{{.Skipped}}</p>{{else}}
+  <pre class="preview__text diff"><code>{{range .Text}}<span class="diff__line diff__line--{{if eq .Kind "+"}}add{{else if eq .Kind "-"}}del{{else if eq .Kind "~"}}gap{{else}}same{{end}}">{{.Kind}} {{.Text}}</span>
+{{end}}</code></pre>{{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,30 @@
+{{define "main"}}
+{{with .Data}}
+<section class="panel">
+  <h1 class="panel__title">Snapshot{{if .Label}} {{.Label}}{{end}}</h1>
+  <nav class="breadcrumbs"><a href="{{$.Base}}account">Account</a> / <a href="{{$.Base}}account/apps/{{.App}}">{{.App}}</a> / <a href="{{.Back}}">{{.Slot}}</a> / {{.ID}}</nav>
+  <dl class="detail-list">
+    {{if .Created}}<dt class="detail-list__key">Created</dt><dd class="detail-list__val">{{.Created}}</dd>{{end}}
+    {{if .Device}}<dt class="detail-list__key">Device</dt><dd class="detail-list__val">{{.Device}}</dd>{{end}}
+    {{if .Label}}<dt class="detail-list__key">Label</dt><dd class="detail-list__val">{{.Label}}</dd>{{end}}
+    {{if not .Encrypted}}<dt class="detail-list__key">Contents</dt><dd class="detail-list__val">{{.Files}} files, {{fsize .Total}}</dd>{{end}}
+  </dl>
+  <p class="panel__actions"><a class="button" href="{{.Base}}/archive.tar">Download as tar</a></p>
+</section>
+{{if .Encrypted}}
+<section class="panel"><div class="empty"><p class="empty__title">Encrypted end to end</p><p class="empty__text">This snapshot was sealed on the device, so the server cannot show its files. Restore it with the saves client.</p></div></section>
+{{else}}
+{{if .Others}}
+<section class="panel">
+  <h2 class="panel__title">Compare</h2>
+  <p class="field__hint">See which files changed between this snapshot and another one.</p>
+  <ul class="plain-list">{{range .Others}}<li><a href="{{$.Data.Base}}/diff/{{.ID}}">{{.At}}{{if .Label}} {{.Label}}{{end}}{{if .Device}} on {{.Device}}{{end}}</a></li>{{end}}</ul>
+</section>
+{{end}}
+<section class="panel">
+  <h2 class="panel__title">Files</h2>
+  {{if .Tree.Children}}{{template "tree" .Tree.Children}}{{else}}<div class="empty"><p class="empty__title">No files</p></div>{{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

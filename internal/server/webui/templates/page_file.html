@@ -1,0 +1,25 @@
+{{define "main"}}
+{{with .Data}}
+<section class="panel">
+  <h1 class="panel__title">{{.Name}}</h1>
+  <nav class="breadcrumbs"><a href="{{.Back}}">Snapshot {{.ID}}</a> / {{.Path}}</nav>
+  <dl class="detail-list">{{range .Info}}<dt class="detail-list__key">{{index . 0}}</dt><dd class="detail-list__val">{{index . 1}}</dd>{{end}}</dl>
+  <p class="panel__actions"><a class="button" href="{{.Raw}}?download=1">Download</a></p>
+</section>
+<section class="panel">
+  {{if eq .Kind "image"}}
+  <h2 class="panel__title">Preview</h2>
+  <img class="preview__img" src="{{.Raw}}" alt="{{.Name}}">
+  {{else if eq .Kind "text"}}
+  <h2 class="panel__title">Contents</h2>
+  {{if .Truncated}}<p class="notice notice--warn" role="status">Showing the first 256 KiB. Download the file for the rest.</p>{{end}}
+  <pre class="preview__text"><code>{{.Text}}</code></pre>
+  {{else}}
+  <h2 class="panel__title">{{if eq .Kind "nbt"}}Minecraft data, raw bytes{{else}}Raw bytes{{end}}</h2>
+  <pre class="preview__hex"><code>{{range .Rows}}{{.Off}}  {{.Hex}} {{.ASCII}}
+{{end}}</code></pre>
+  <p class="pager">{{if .PrevOff}}<a class="button button--small" href="?offset={{.PrevOff}}">Previous</a>{{end}}{{if .NextOff}}<a class="button button--small" href="?offset={{.NextOff}}">Next</a>{{end}}</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}

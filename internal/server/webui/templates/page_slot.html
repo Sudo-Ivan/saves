@@ -11,7 +11,7 @@
     <tbody>
     {{range .Data.Snapshots}}
       <tr class="table__row{{if eq .ID $.Data.Head}} table__row--current{{end}}">
-        <td class="table__cell">{{.ID}}{{if eq .ID $.Data.Head}} <span class="stamp">Current</span>{{end}}</td>
+        <td class="table__cell"><a href="{{$.Base}}account/apps/{{$.Data.App}}/slots/{{$.Data.Slot}}/snapshots/{{.ID}}">{{.ID}}</a>{{if eq .ID $.Data.Head}} <span class="stamp">Current</span>{{end}}</td>
         <td class="table__cell">{{.Device}}</td>
         <td class="table__cell">{{.Label}}</td>
         <td class="table__cell num">{{fsize .TotalBytes}}</td>

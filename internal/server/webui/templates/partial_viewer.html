@@ -1,0 +1,12 @@
+{{define "tree"}}
+<ul class="tree">
+{{range .}}
+  {{if .Dir}}
+  <li class="tree__item"><details class="tree__dir"{{if .Open}} open{{end}}><summary class="tree__name"><span class="tree__label">{{.Name}}</span><span class="tree__meta">{{.Files}} {{if eq .Files 1}}file{{else}}files{{end}}, {{fsize .Size}}</span></summary>
+    {{template "tree" .Children}}</details></li>
+  {{else}}
+  <li class="tree__item tree__file"><a class="tree__name" href="{{.Href}}"><span class="tree__label">{{.Name}}</span><span class="tree__meta">{{fsize .Size}}, {{.ModTime}}</span></a></li>
+  {{end}}
+{{end}}
+</ul>
+{{end}}

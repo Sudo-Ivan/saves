@@ -21,6 +21,7 @@ type Config struct {
 	CORS         CORSConfig         `json:"cors" doc:"cross origin resource sharing, off by default"`
 	Metrics      MetricsConfig      `json:"metrics" doc:"Prometheus metrics"`
 	Web          WebConfig          `json:"web" doc:"browser UI, off by default"`
+	Bandwidth    BandwidthConfig    `json:"bandwidth" doc:"bandwidth accounting and limits, off by default"`
 	Proxy        ProxyTrustConfig   `json:"proxy" doc:"reverse proxy trust for forwarded headers"`
 }
 
@@ -205,6 +206,14 @@ type TokenAuthConfig struct {
 	AuditRetention   Duration `json:"audit_retention" doc:"audit event and usage retention; 0 keeps forever"`
 }
 
+// BandwidthConfig configures bandwidth accounting and limits.
+type BandwidthConfig struct {
+	Enabled       bool     `json:"enabled" doc:"master switch: counting, throttling and caps"`
+	GlobalUpBps   Size     `json:"global_upload_bytes_per_sec" doc:"server wide upload rate cap, 0 off"`
+	GlobalDownBps Size     `json:"global_download_bytes_per_sec" doc:"server wide download rate cap, 0 off"`
+	Retention     Duration `json:"retention" doc:"daily usage retention"`
+}
+
 // OIDCConfig configures JWT bearer validation.
 type OIDCConfig struct {
 	Enabled        bool     `json:"enabled" doc:"accept OIDC JWTs"`
@@ -262,6 +271,16 @@ type Tier struct {
 	Rate                 RateLimit       `json:"rate" doc:"per principal request rate"`
 	MaxConcurrentUploads int             `json:"max_concurrent_uploads" doc:"parallel chunk uploads per principal"`
 	RequireEncryption    *bool           `json:"require_encryption,omitempty" doc:"require vault encrypted manifests"`
+	Bandwidth            BandwidthPolicy `json:"bandwidth" doc:"per-user bandwidth policy, 0 means unlimited"`
+}
+
+// BandwidthPolicy throttles and caps transfer for one tier. Zero fields
+// are unlimited. Daily and monthly caps count upload plus download.
+type BandwidthPolicy struct {
+	UpBps   Size `json:"upload_bytes_per_sec" doc:"per-user upload rate cap"`
+	DownBps Size `json:"download_bytes_per_sec" doc:"per-user download rate cap"`
+	Daily   Size `json:"daily_bytes" doc:"per-user daily transfer cap, UTC day"`
+	Monthly Size `json:"monthly_bytes" doc:"per-user monthly transfer cap, UTC month"`
 }
 
 // RetentionPolicy controls snapshot pruning.

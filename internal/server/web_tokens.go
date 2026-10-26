@@ -192,7 +192,11 @@ func (s *Server) whTokens(w http.ResponseWriter, r *http.Request) {
 	if !wv.requireAuth() {
 		return
 	}
-	s.renderTokens(wv, "", "", "", tokenForm{Read: true, Expires: s.defaultExpiry()})
+	notice := ""
+	if r.URL.Query().Get("revoked") == "1" {
+		notice = "Token revoked. It no longer authenticates."
+	}
+	s.renderTokens(wv, notice, "", "", tokenForm{Read: true, Expires: s.defaultExpiry()})
 }
 
 func (s *Server) renderTokens(wv *webReq, notice, errMsg, newToken string, f tokenForm) {
@@ -363,7 +367,7 @@ func (s *Server) whTokenRevoke(w http.ResponseWriter, r *http.Request) {
 		s.tokenError(wv, err)
 		return
 	}
-	http.Redirect(w, r, wv.web.link+"account/tokens/"+url.PathEscape(id), http.StatusSeeOther)
+	http.Redirect(w, r, wv.web.link+"account/tokens?revoked=1", http.StatusSeeOther) // #nosec G710 -- fixed route under the link prefix
 }
 
 // tokenError hides the existence of other users' tokens behind 404.

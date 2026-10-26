@@ -14,6 +14,7 @@ const (
 	CodeEncryptionRequired = "encryption_required"
 	CodeQuotaExceeded      = "quota_exceeded"
 	CodeRateLimited        = "rate_limited"
+	CodeBandwidthExceeded  = "bandwidth_exceeded"
 	CodeInvalidManifest    = "invalid_manifest"
 	CodeNotFound           = "not_found"
 	CodeUnauthorized       = "unauthorized"

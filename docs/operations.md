@@ -42,3 +42,24 @@ handles this; use the command for manual reclaim after bulk deletes.
 - sqlite: `savesd admin backup-meta`.
 - postgres: `pg_dump`.
 - blobs: rsync the fs root or replicate the S3 bucket.
+
+## bandwidth limits
+
+Bandwidth accounting and limits are off by default. Enable with
+bandwidth.enabled, then set per-tier policies: upload_bytes_per_sec,
+download_bytes_per_sec (rate throttles), daily_bytes and monthly_bytes
+(period caps, UTC day and UTC calendar month, counting upload plus
+download together). Server wide rate caps live under
+bandwidth.global_upload_bytes_per_sec and
+bandwidth.global_download_bytes_per_sec. A tier with no bandwidth
+policy is unlimited but still counted.
+
+Requests that hit a period cap get 429 with code bandwidth_exceeded and
+a Retry-After to the next reset. In-flight transfers may overshoot a
+cap by their own size. Per-user period totals converge across server
+instances every 30 seconds, so caps are soft across nodes.
+
+Metrics: saves_bandwidth_bytes_total{direction},
+saves_bandwidth_throttle_seconds_total,
+saves_bandwidth_rejections_total. Daily usage rows are kept for
+bandwidth.retention (default 400 days).

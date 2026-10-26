@@ -203,3 +203,29 @@ func TestTokenCIDREnforceAPI(t *testing.T) {
 	}
 	r3.Body.Close()
 }
+
+func TestMeLimits(t *testing.T) {
+	f := setup(t)
+	tok := f.tokenFor(t, "u", []string{"read"}, nil)
+	r := f.do(t, "GET", "/v1/me", nil, map[string]string{"Authorization": "Bearer " + tok})
+	if r.StatusCode != 200 {
+		t.Fatalf("me: %d", r.StatusCode)
+	}
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	var me struct {
+		Limits struct {
+			MaxFiles int64 `json:"max_files"`
+		} `json:"limits"`
+		TierLimits struct {
+			MaxSlots int   `json:"max_slots"`
+			MaxFiles int64 `json:"max_files"`
+		} `json:"tier_limits"`
+	}
+	if err := json.Unmarshal(b, &me); err != nil {
+		t.Fatalf("%s", b)
+	}
+	if me.TierLimits.MaxSlots <= 0 {
+		t.Fatalf("tier_limits: %s", b)
+	}
+}

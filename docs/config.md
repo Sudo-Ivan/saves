@@ -271,6 +271,14 @@ OIDC authorization code sign in
 - web.oidc.auto_provision: create a user for a first time subject
 - web.oidc.admin_claim: id_token claim inspected for admin
 - web.oidc.admin_value: claim value granting admin
+## bandwidth
+
+bandwidth accounting and limits, off by default
+
+- bandwidth.enabled: master switch: counting, throttling and caps
+- bandwidth.global_upload_bytes_per_sec: server wide upload rate cap, 0 off
+- bandwidth.global_download_bytes_per_sec: server wide download rate cap, 0 off
+- bandwidth.retention: daily usage retention
 ## proxy
 
 reverse proxy trust for forwarded headers

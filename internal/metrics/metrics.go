@@ -21,6 +21,9 @@ type Metrics struct {
 	Reg            *prometheus.Registry
 	opLatency      *prometheus.HistogramVec
 	authFails      *prometheus.CounterVec
+	bwBytes        *prometheus.CounterVec
+	bwThrottle     prometheus.Counter
+	bwReject       prometheus.Counter
 	gcRuns         *prometheus.CounterVec
 	gcDeleted      *prometheus.CounterVec
 	uploadInFlight prometheus.Gauge
@@ -54,6 +57,18 @@ func New(namespace, version string) *Metrics {
 			Namespace: namespace, Name: "gc_deleted_total",
 			Help: "objects deleted by gc",
 		}, []string{"kind"}),
+		bwBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace, Name: "bandwidth_bytes_total",
+			Help: "bytes transferred by direction",
+		}, []string{"direction"}),
+		bwThrottle: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace, Name: "bandwidth_throttle_seconds_total",
+			Help: "seconds spent throttled",
+		}),
+		bwReject: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace, Name: "bandwidth_rejections_total",
+			Help: "bandwidth 429 rejections",
+		}),
 		uploadInFlight: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace, Name: "uploads_in_flight",
 			Help: "chunk uploads in progress",
@@ -63,7 +78,7 @@ func New(namespace, version string) *Metrics {
 			Help: "web login attempts by result",
 		}, []string{"result"}),
 	}
-	reg.MustRegister(m.opLatency, m.authFails, m.gcRuns, m.gcDeleted, m.uploadInFlight, m.webLogins)
+	reg.MustRegister(m.opLatency, m.authFails, m.gcRuns, m.gcDeleted, m.uploadInFlight, m.webLogins, m.bwBytes, m.bwThrottle, m.bwReject)
 	return m
 }
 
@@ -214,3 +229,14 @@ func (w *metaWrap) GetToken(ctx context.Context, id string) (meta.Token, error) 
 	w.time("get_token", err, t0)
 	return t, err
 }
+
+// BandwidthBytes counts bytes by direction (up or down).
+func (m *Metrics) BandwidthBytes(direction string, n int64) {
+	m.bwBytes.WithLabelValues(direction).Add(float64(n))
+}
+
+// BandwidthThrottle counts seconds spent throttled.
+func (m *Metrics) BandwidthThrottle(d time.Duration) { m.bwThrottle.Add(d.Seconds()) }
+
+// BandwidthReject counts 429 rejections.
+func (m *Metrics) BandwidthReject() { m.bwReject.Inc() }

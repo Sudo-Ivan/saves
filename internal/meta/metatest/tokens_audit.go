@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sudo-Ivan/saves/internal/meta"
 	"github.com/Sudo-Ivan/saves/internal/meta/testclock"
+	"github.com/Sudo-Ivan/saves/pkg/api"
 )
 
 // TokensAudit exercises UpdateToken, events, usage, stats and purge.
@@ -221,5 +222,107 @@ func TokensUsage(t *testing.T, f Factory) {
 	}
 	if found {
 		t.Fatal("old usage not purged")
+	}
+}
+
+// AppViz covers AppBytes, SnapshotActivity and bandwidth accounting.
+func AppViz(t *testing.T, f Factory) {
+	st := f(t, testclock.New(time.Date(2027, 3, 10, 12, 0, 0, 0, time.UTC)))
+	ctx := context.Background()
+	u := mkUser(t, st, "viz")
+	q := int64(1 << 30)
+
+	// app1: slot1 with head=200, slot2 with head replaced (only head counts)
+	r1 := mkSnapshot(t, st, u.ID, "app1", "s1", []api.ChunkRef{chunkRef("v1", 200)}, q)
+	storeAll(t, st, u.ID, r1.Snapshot.ID, []api.ChunkRef{chunkRef("v1", 200)})
+	if _, err := st.CommitSnapshot(ctx, u.ID, r1.Snapshot.ID, meta.CommitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	r2 := mkSnapshot(t, st, u.ID, "app1", "s2", []api.ChunkRef{chunkRef("v2", 100)}, q)
+	storeAll(t, st, u.ID, r2.Snapshot.ID, []api.ChunkRef{chunkRef("v2", 100)})
+	if _, err := st.CommitSnapshot(ctx, u.ID, r2.Snapshot.ID, meta.CommitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	r3 := mkSnapshot(t, st, u.ID, "app1", "s2", []api.ChunkRef{chunkRef("v3", 500)}, q)
+	storeAll(t, st, u.ID, r3.Snapshot.ID, []api.ChunkRef{chunkRef("v3", 500)})
+	if _, err := st.CommitSnapshot(ctx, u.ID, r3.Snapshot.ID, meta.CommitOptions{ExpectedHead: r2.Snapshot.ID}); err != nil {
+		t.Fatal(err)
+	}
+	// app2: pending only, counts 0
+	r4 := mkSnapshot(t, st, u.ID, "app2", "s1", []api.ChunkRef{chunkRef("v4", 50)}, q)
+	_ = r4
+	// app3 with head
+	r5 := mkSnapshot(t, st, u.ID, "app3", "s1", []api.ChunkRef{chunkRef("v5", 10)}, q)
+	storeAll(t, st, u.ID, r5.Snapshot.ID, []api.ChunkRef{chunkRef("v5", 10)})
+	if _, err := st.CommitSnapshot(ctx, u.ID, r5.Snapshot.ID, meta.CommitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	apps, err := st.AppBytes(ctx, u.ID)
+	if err != nil || len(apps) != 3 {
+		t.Fatalf("apps=%v err=%v", apps, err)
+	}
+	// ordered by bytes desc: app1 (200+500=700), app3 (10), app2 (0)
+	if apps[0].App != "app1" || apps[0].Bytes != 700 || apps[0].Slots != 2 {
+		t.Fatalf("app1=%v", apps[0])
+	}
+	if apps[1].App != "app3" || apps[1].Bytes != 10 {
+		t.Fatalf("app3=%v", apps[1])
+	}
+	if apps[2].App != "app2" || apps[2].Bytes != 0 {
+		t.Fatalf("app2=%v", apps[2])
+	}
+
+	// SnapshotActivity: 4 committed on "today" in the test clock
+	days, err := st.SnapshotActivity(ctx, u.ID, 30)
+	if err != nil || len(days) != 30 {
+		t.Fatalf("days=%d err=%v", len(days), err)
+	}
+	last := days[29]
+	if last.Snapshots != 4 || last.Bytes != 810 {
+		t.Fatalf("today=%v", last)
+	}
+	for _, d := range days[:29] {
+		if d.Snapshots != 0 || d.Bytes != 0 {
+			t.Fatalf("zero fill: %+v", d)
+		}
+	}
+	big, err := st.SnapshotActivity(ctx, u.ID, 200)
+	if err != nil || len(big) != 90 {
+		t.Fatalf("cap=%d", len(big))
+	}
+
+	// Bandwidth additive across calls and users
+	d0 := meta.BandwidthDay(time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC))
+	if err := st.AddBandwidth(ctx, []meta.BandwidthRow{{UserID: u.ID, Day: d0, Up: 10, Down: 20}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddBandwidth(ctx, []meta.BandwidthRow{
+		{UserID: u.ID, Day: d0, Up: 5, Down: 7},
+		{UserID: "other", Day: d0, Up: 1, Down: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.BandwidthUsage(ctx, u.ID, d0, d0)
+	if err != nil || len(rows) != 1 || rows[0].Up != 15 || rows[0].Down != 27 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	// range ordering
+	d1 := meta.BandwidthDay(time.Date(2027, 3, 11, 0, 0, 0, 0, time.UTC))
+	_ = st.AddBandwidth(ctx, []meta.BandwidthRow{{UserID: u.ID, Day: d1, Up: 1, Down: 1}})
+	rows, _ = st.BandwidthUsage(ctx, u.ID, d0, d1)
+	if len(rows) != 2 || rows[0].Day != d0 {
+		t.Fatalf("range=%v", rows)
+	}
+	if err := st.PurgeBandwidth(ctx, d1); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = st.BandwidthUsage(ctx, u.ID, d0, d1)
+	if len(rows) != 1 || rows[0].Day != d1 {
+		t.Fatalf("after purge=%v", rows)
+	}
+	// first_use of BandwidthDay sanity
+	if meta.BandwidthDay(time.Date(2027, 1, 9, 0, 0, 0, 0, time.UTC)) != 20270109 {
+		t.Fatal("BandwidthDay")
 	}
 }

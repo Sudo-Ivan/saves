@@ -529,6 +529,7 @@ func adminToken(ctx context.Context, cf *config.Config, st meta.Store, args []st
 		rc := boolErr(st.RevokeToken(ctx, id))
 		if rc == 0 {
 			cliAudit(ctx, cf, st, id, t.UserID, "revoked", "cli")
+			fmt.Println("revoked; a running server stops accepting it within auth.token.cache_ttl (default 2s)")
 		}
 		return rc
 	}

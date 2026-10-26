@@ -39,7 +39,7 @@ Reserved device names and traversal are rejected.
 ## Errors
 
 application/problem+json with a stable machine readable code member:
-quota_exceeded (413), rate_limited (429), conflict (409), encrypted
+quota_exceeded (413), rate_limited (429), bandwidth_exceeded (429, Retry-After set), conflict (409), encrypted
 (409), encryption_required (400), too_large.
 
 ## Encryption

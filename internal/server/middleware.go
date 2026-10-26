@@ -242,7 +242,7 @@ type writerOnly struct{ io.Writer }
 // Handler assembles the middleware chain. /v1 goes to the API mux,
 // everything else to the web handler when enabled.
 func (s *Server) Handler() http.Handler {
-	api := s.cors(http.Handler(s.Mux()))
+	api := s.cors(s.bandwidthMW(s.Mux()))
 	var h http.Handler = api
 	if s.web != nil {
 		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

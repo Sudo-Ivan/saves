@@ -20,6 +20,8 @@ a small edit transfers only the changed data.
   browsing and download, token and user administration.
 - Token expiry presets, per-token IP allowlists, and a per-token audit
   log with hourly usage stats and CSV export.
+- Optional bandwidth limits: per-tier rate throttles and daily or
+  monthly transfer caps, off by default.
 
 ## Install
 

@@ -53,6 +53,7 @@ type Server struct {
 	ready       chan struct{}
 	draining    atomic.Bool
 	web         *webUI
+	bw          *bwManager
 	gc          *gc.Collector
 
 	oidcMu sync.Mutex
@@ -97,6 +98,13 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 				s.Log.Warn("web cookies will not be Secure on a non-loopback listener")
 			}
 		}
+	}
+	if cfg.Bandwidth.Enabled {
+		s.bw = newBwManager(m, o.Clock)
+		s.bw.met = o.Metrics
+		s.bw.gUp.SetRate(cfg.Bandwidth.GlobalUpBps.Int64())
+		s.bw.gDown.SetRate(cfg.Bandwidth.GlobalDownBps.Int64())
+		s.bw.start()
 	}
 	close(s.ready)
 	return s
@@ -209,6 +217,9 @@ func (s *Server) authn(w http.ResponseWriter, r *http.Request) (auth.Principal, 
 		s.writeProblem(w, r, err)
 		return auth.Principal{}, false
 	}
+	if !s.bwAttach(r, p, w) {
+		return auth.Principal{}, false
+	}
 	return p, true
 }
 
@@ -220,3 +231,10 @@ func (s *Server) trustedCIDRs() []netip.Prefix { return s.Cfg.TrustedProxyPrefix
 
 // SetGC wires the GC for admin-triggered runs.
 func (s *Server) SetGC(g *gc.Collector) { s.gc = g }
+
+// CloseBandwidth flushes and stops the bandwidth manager when enabled.
+func (s *Server) CloseBandwidth() {
+	if s.bw != nil {
+		s.bw.Close()
+	}
+}

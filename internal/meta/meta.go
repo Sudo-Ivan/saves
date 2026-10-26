@@ -71,6 +71,14 @@ type Store interface {
 	ListTokenEvents(ctx context.Context, tokenID, kind, cursor string, limit int) ([]TokenEvent, string, error)
 	TokenStats(ctx context.Context, tokenID string) (TokenStats, error)
 	PurgeTokenAudit(ctx context.Context, before time.Time) error
+	// Per-app byte totals for visualization.
+	AppBytes(ctx context.Context, userID string) ([]AppBytes, error)
+	// Daily snapshot activity for visualization.
+	SnapshotActivity(ctx context.Context, userID string, days int) ([]DayActivity, error)
+	// Bandwidth accounting.
+	AddBandwidth(ctx context.Context, rows []BandwidthRow) error
+	BandwidthUsage(ctx context.Context, userID string, fromDay, toDay int) ([]BandwidthRow, error)
+	PurgeBandwidth(ctx context.Context, beforeDay int) error
 	GetToken(ctx context.Context, id string) (Token, error)
 	TouchToken(ctx context.Context, id string, at time.Time) error
 	ListTokens(ctx context.Context, userID string) ([]Token, error)
@@ -552,4 +560,32 @@ type TokenStats struct {
 	TopIPs                          []IPCount
 	Denied                          map[string]int64
 	FirstUse, LastUse               *time.Time
+}
+
+// AppBytes totals logical head size per app.
+type AppBytes struct {
+	App       string
+	Slots     int
+	Snapshots int
+	Bytes     int64
+}
+
+// DayActivity is one day of committed snapshot volume.
+type DayActivity struct {
+	Day       time.Time
+	Snapshots int
+	Bytes     int64
+}
+
+// BandwidthRow is one day of upload and download bytes.
+type BandwidthRow struct {
+	UserID   string
+	Day      int
+	Up, Down int64
+}
+
+// BandwidthDay converts a time to the YYYYMMDD day key.
+func BandwidthDay(t time.Time) int {
+	t = t.UTC()
+	return t.Year()*10000 + int(t.Month())*100 + t.Day()
 }

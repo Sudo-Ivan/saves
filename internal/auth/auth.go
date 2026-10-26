@@ -182,7 +182,7 @@ type TokenAuthenticator struct {
 	Meta     meta.Store
 	Clock    func() time.Time
 	TouchTTL time.Duration
-	// CacheTTL bounds the validation cache; 0 uses a 10s default.
+	// CacheTTL bounds the validation cache; 0 uses a 2s default.
 	CacheTTL time.Duration
 	// FailLimiter is a per-IP failed-auth token bucket.
 	FailLimiter *ratelimit.Limiter
@@ -328,7 +328,7 @@ func (a *TokenAuthenticator) Authenticate(ctx context.Context, r *http.Request) 
 	p := Principal{User: u, Scopes: sc, Apps: t.Apps, TokenID: id, Admin: sc&ScopeAdmin != 0}
 	ttl := a.CacheTTL
 	if ttl <= 0 {
-		ttl = 10 * time.Second
+		ttl = 2 * time.Second
 	}
 	a.recordUsage(id, r, now)
 	a.storeCache(id, cacheEntry{hash: t.SecretHash, user: u, scopes: sc, apps: t.Apps,

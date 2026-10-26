@@ -43,6 +43,7 @@ type Effective struct {
 	MaxConcurrentUploads int
 	AllowForce           bool
 	APILimits            api.Limits
+	Bandwidth            config.BandwidthPolicy
 }
 
 var ErrUnknownApp = errors.New("quota: unknown app")
@@ -73,6 +74,7 @@ func (r *Resolver) For(u meta.User, appID string, anonymous bool) (Effective, er
 		Burst:                t.Rate.Burst,
 		MaxConcurrentUploads: t.MaxConcurrentUploads,
 		APILimits:            c.Limits.APILimits(),
+		Bandwidth:            t.Bandwidth,
 	}
 	// Tier override for encryption requirement.
 	if t.RequireEncryption != nil {

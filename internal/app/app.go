@@ -398,7 +398,16 @@ func cmdServe(args []string) int {
 		}
 	}
 	srv := server.New(svc, m, b, chain, reg, cfg, server.Options{Logger: logger, Metrics: met})
+	if cfg.Bandwidth.Enabled {
+		defer srv.CloseBandwidth()
+	}
+	if cfg.Bandwidth.Enabled {
+		defer srv.CloseBandwidth()
+	}
 	srv.Version = Version
+	if cfg.Bandwidth.Enabled {
+		defer srv.CloseBandwidth()
+	}
 	runner := server.NewRunner(srv, cfg)
 	logVar := &slog.LevelVar{}
 	_ = logVar
@@ -426,7 +435,7 @@ func cmdServe(args []string) int {
 
 	// Housekeeping sweep every 10 minutes: expired web sessions and
 	// token audit rows past their retention.
-	if cfg.Web.Enabled || (cfg.Auth.Token.AuditEnabled && cfg.Auth.Token.AuditRetention > 0) {
+	if cfg.Web.Enabled || (cfg.Auth.Token.AuditEnabled && cfg.Auth.Token.AuditRetention > 0) || (cfg.Bandwidth.Enabled && cfg.Bandwidth.Retention > 0) {
 		go func() {
 			t := time.NewTicker(10 * time.Minute)
 			defer t.Stop()
@@ -443,6 +452,18 @@ func cmdServe(args []string) int {
 					if ret := cfg.Auth.Token.AuditRetention.Duration(); cfg.Auth.Token.AuditEnabled && ret > 0 {
 						if err := m.PurgeTokenAudit(gcCtx, time.Now().Add(-ret)); err != nil {
 							logger.Warn("token audit purge", "err", err)
+						}
+					}
+					if cfg.Bandwidth.Enabled && cfg.Bandwidth.Retention > 0 {
+						cut := meta.BandwidthDay(time.Now().Add(-cfg.Bandwidth.Retention.Duration()))
+						if err := m.PurgeBandwidth(gcCtx, cut); err != nil {
+							logger.Warn("bandwidth purge", "err", err)
+						}
+					}
+					if cfg.Bandwidth.Enabled && cfg.Bandwidth.Retention > 0 {
+						cut := meta.BandwidthDay(time.Now().Add(-cfg.Bandwidth.Retention.Duration()))
+						if err := m.PurgeBandwidth(gcCtx, cut); err != nil {
+							logger.Warn("bandwidth purge", "err", err)
 						}
 					}
 				}

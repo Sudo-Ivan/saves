@@ -39,6 +39,9 @@ func (s *Server) hMe(w http.ResponseWriter, r *http.Request) {
 		},
 		"scopes": p.Scopes.String(), "anonymous": p.Anonymous,
 		"require_encryption": s.Svc.RequireEncryption(r.Context(), p),
+		"limits":             s.Cfg.Limits.APILimits(),
+		"tier_limits":        s.tierLimits(r, p, u),
+		"bandwidth":          s.bwMe(r, p, u),
 	})
 }
 
@@ -720,4 +723,34 @@ func (s *Server) hEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// tierLimits resolves the caller's tier for /v1/me.
+func (s *Server) tierLimits(r *http.Request, p auth.Principal, u meta.User) map[string]any {
+	e, err := s.Svc.Quota.For(u, "", p.Anonymous)
+	if err != nil {
+		return nil
+	}
+	return map[string]any{
+		"quota_bytes":            e.QuotaBytes,
+		"max_slots":              e.MaxSlots,
+		"max_pending_snapshots":  e.MaxPendingSnapshots,
+		"max_snapshots_per_slot": e.KeepLast,
+		"max_files":              e.APILimits.MaxFiles,
+		"max_file_bytes":         e.APILimits.MaxFileBytes,
+		"max_snapshot_bytes":     e.APILimits.MaxSnapshotBytes,
+	}
+}
+
+// bwMe returns the /v1/me bandwidth object.
+func (s *Server) bwMe(r *http.Request, p auth.Principal, u meta.User) map[string]any {
+	if s.bw == nil {
+		return map[string]any{"enabled": false}
+	}
+	e, _ := s.Svc.Quota.For(u, "", p.Anonymous)
+	var pol policy
+	bp := e.Bandwidth
+	pol = policy{upBps: bp.UpBps.Int64(), downBps: bp.DownBps.Int64(),
+		daily: bp.Daily.Int64(), monthly: bp.Monthly.Int64()}
+	return s.bw.Snapshot(r.Context(), u.ID, pol)
 }

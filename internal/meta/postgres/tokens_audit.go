@@ -223,3 +223,110 @@ func (s *Store) PurgeTokenAudit(ctx context.Context, before time.Time) error {
 		return err
 	})
 }
+
+func (s *Store) AppBytes(ctx context.Context, userID string) ([]meta.AppBytes, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.app, COUNT(*), COALESCE(SUM(COALESCE(sn.total_bytes,0)),0), COUNT(sn.id)
+		FROM slots s LEFT JOIN snapshots sn ON sn.id = s.head_snapshot_id AND sn.state='committed'
+		WHERE s.user_id=$1 GROUP BY s.app
+		ORDER BY 3 DESC, s.app`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []meta.AppBytes
+	for rows.Next() {
+		var a meta.AppBytes
+		if err := rows.Scan(&a.App, &a.Slots, &a.Bytes, &a.Snapshots); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SnapshotActivity(ctx context.Context, userID string, days int) ([]meta.DayActivity, error) {
+	if days > 90 {
+		days = 90
+	}
+	if days < 1 {
+		days = 1
+	}
+	now := s.now().UTC()
+	start := now.Truncate(24*time.Hour).AddDate(0, 0, -days+1)
+	rows, err := s.pool.Query(ctx, `
+		SELECT committed_at, total_bytes FROM snapshots
+		WHERE user_id=$1 AND state='committed' AND committed_at>=$2`, userID, ns(start))
+	if err != nil {
+		return nil, err
+	}
+	byDay := map[string]*meta.DayActivity{}
+	for rows.Next() {
+		var at, b int64
+		if err := rows.Scan(&at, &b); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		d := time.Unix(0, at).UTC().Truncate(24 * time.Hour).Format("2006-01-02")
+		if byDay[d] == nil {
+			t0, _ := time.Parse("2006-01-02", d)
+			byDay[d] = &meta.DayActivity{Day: t0}
+		}
+		byDay[d].Snapshots++
+		byDay[d].Bytes += b
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]meta.DayActivity, days)
+	for i := 0; i < days; i++ {
+		d := start.AddDate(0, 0, i)
+		out[i] = meta.DayActivity{Day: d}
+		if v := byDay[d.Format("2006-01-02")]; v != nil {
+			out[i].Snapshots = v.Snapshots
+			out[i].Bytes = v.Bytes
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddBandwidth(ctx context.Context, rows []meta.BandwidthRow) error {
+	return s.wtx(ctx, func(q qtx) error {
+		for _, r := range rows {
+			if _, err := q.Exec(ctx, `INSERT INTO bandwidth_usage(user_id, day, up_bytes, down_bytes)
+				VALUES($1,$2,$3,$4)
+				ON CONFLICT(user_id, day) DO UPDATE SET
+				up_bytes=bandwidth_usage.up_bytes+excluded.up_bytes, down_bytes=bandwidth_usage.down_bytes+excluded.down_bytes`,
+				r.UserID, r.Day, r.Up, r.Down); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) BandwidthUsage(ctx context.Context, userID string, fromDay, toDay int) ([]meta.BandwidthRow, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_id, day, up_bytes, down_bytes FROM bandwidth_usage
+		WHERE user_id=$1 AND day>=$2 AND day<=$3 ORDER BY day`, userID, fromDay, toDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []meta.BandwidthRow
+	for rows.Next() {
+		var r meta.BandwidthRow
+		if err := rows.Scan(&r.UserID, &r.Day, &r.Up, &r.Down); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PurgeBandwidth(ctx context.Context, beforeDay int) error {
+	return s.wtx(ctx, func(q qtx) error {
+		_, err := q.Exec(ctx, `DELETE FROM bandwidth_usage WHERE day<$1`, beforeDay)
+		return err
+	})
+}

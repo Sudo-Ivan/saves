@@ -1,0 +1,17 @@
+[package]
+name = "saves-sdk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Client SDK for the saves save-sync server"
+license = "0BSD"
+repository = "https://github.com/Sudo-Ivan/saves"
+keywords = ["saves", "sync", "backup", "client"]
+categories = ["api-bindings"]
+
+[dependencies]
+ureq = { version = "2", default-features = false, features = ["tls", "gzip", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+base64 = "0.22"

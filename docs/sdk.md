@@ -7,10 +7,10 @@ docs/protocol.md.
 
 | Language | Directory | Dependencies |
 |----------|-----------|--------------|
-| Rust | sdk/rust | ureq, serde, serde_json, sha2 |
+| Rust | sdk/rust | ureq, serde, serde_json, sha2, base64 |
 | C++17 | sdk/cpp | libcurl, vendored nlohmann/json and SHA-256 |
-| C# | sdk/csharp | none beyond the .NET base library |
-| TypeScript | sdk/typescript | none, uses fetch and Web Crypto |
+| C# | sdk/csharp | System.Text.Json on netstandard2.0, none on net8 |
+| TypeScript | sdk/typescript | none, fetch; push and pull via @saves/sdk/node |
 | Python | sdk/python | none, standard library only |
 | Java | sdk/java | none, JDK 11 java.net.http |
 
@@ -86,7 +86,7 @@ are returned before any state change.
    is safe.
 8. POST /v1/apps/{app}/slots/{slot}/snapshots/{id}/commit. Send If-Match with
    the id of the head the push was based on (the slot head from GET
-   /v1/apps/{app}/slots/{slot}, field head_snapshot_id) to get a conflict
+   /v1/apps/{app}/slots/{slot}, field head) to get a conflict
    instead of overwriting. Add ?force=1 only when the caller asks for it.
    Returns the committed snapshot.
 9. Progress callback receives bytes uploaded and bytes total.
@@ -122,3 +122,21 @@ integration test pushes a directory with an inline file, a multi-chunk file
 and an empty directory, pulls it into a second directory and compares every
 byte, checks a head conflict on a stale If-Match, lists and deletes the
 snapshot, and creates, patches and revokes a token.
+
+
+## Wire shapes
+
+True JSON shapes checked against a live savesd:
+
+- Slot object uses head for the head snapshot id.
+- Manifest File entries omit mode and mtime_ns when zero; device, label,
+  dirs and parent are omitted when empty. Deserialize them with defaults.
+- The snapshot list endpoint returns an object with a snapshots array and
+  an optional cursor.
+- Commit returns an object with a head field.
+- Chunk PUT returns an empty 2xx body, not JSON.
+- SSE reconnect uses exponential backoff from 500 ms doubling to 10 s
+  with up to 25 percent jitter and resets after a successful event.
+- Push uploads missing chunks in parallel (default 4). Pull downloads a
+  file's chunks in parallel and verifies them all before writing the file
+  atomically.

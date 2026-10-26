@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saves-sdk"
+version = "0.1.0"
+description = "Client SDK for the saves save-sync server"
+requires-python = ">=3.9"
+license = {text = "0BSD"}
+readme = "README.md"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/Sudo-Ivan/saves"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["saves_sdk"]

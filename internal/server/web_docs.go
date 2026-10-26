@@ -381,4 +381,3 @@ func inlineMD(s string) string {
 	}
 	return out.String()
 }
-

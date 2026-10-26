@@ -214,8 +214,32 @@ paths:
         '200': {description: ok}
         '401': {description: auth}
   /v1/tokens/{id}:
+    get:
+      operationId: myTokenGet
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+    patch:
+      operationId: myTokenPatch
+      responses:
+        '200': {description: ok}
+        '400': {description: invalid name, expiry or allowed_cidrs}
+        '401': {description: auth}
+        '409': {description: token revoked}
     delete:
       operationId: myTokenRevoke
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/tokens/{id}/events:
+    get:
+      operationId: myTokenEvents
+      responses:
+        '200': {description: ok}
+        '401': {description: auth}
+  /v1/tokens/{id}/stats:
+    get:
+      operationId: myTokenStats
       responses:
         '200': {description: ok}
         '401': {description: auth}

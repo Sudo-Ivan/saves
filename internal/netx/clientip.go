@@ -64,3 +64,40 @@ func IPPrefix(a netip.Addr) string {
 	}
 	return netip.PrefixFrom(a, 64).Masked().Addr().String() + "/64"
 }
+
+// ClientIPReal returns the effective client address: the direct peer,
+// an X-Forwarded-For walk when the peer is trusted, or the real-IP
+// header when it is set and the peer is trusted. It is the single
+// client-IP rule for API auth, web auth and rate limiting.
+func ClientIPReal(r *http.Request, trustedCIDRs []netip.Prefix, realIPHeader string) netip.Addr {
+	addr := ClientIP(r, trustedCIDRs)
+	if realIPHeader == "" {
+		return addr
+	}
+	peer := peerAddr(r)
+	trusted := false
+	for _, p := range trustedCIDRs {
+		if p.Contains(peer) {
+			trusted = true
+			break
+		}
+	}
+	if !trusted {
+		return addr
+	}
+	if v := strings.TrimSpace(r.Header.Get(realIPHeader)); v != "" {
+		if a, err := netip.ParseAddr(v); err == nil {
+			return a
+		}
+	}
+	return addr
+}
+
+func peerAddr(r *http.Request) netip.Addr {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	a, _ := netip.ParseAddr(host)
+	return a
+}

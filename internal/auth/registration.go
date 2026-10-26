@@ -53,11 +53,9 @@ type Result struct {
 	CreatedAt time.Time
 }
 
-// Register validates the invite (when in invite mode), creates the
-// user, and mints the first token, returning the secret once.
-func (rg *Registration) Register(ctx context.Context, ip, inviteCode string) (*Result, error) {
-	rg.mu.Lock()
-	defer rg.mu.Unlock()
+// check enforces mode, rate limit, and invite validity, returning the
+// invite to mark used on success.
+func (rg *Registration) check(ip, inviteCode string) (*Invite, error) {
 	if rg.Mode == RegClosed {
 		return nil, ErrRegistrationClosed
 	}
@@ -66,15 +64,24 @@ func (rg *Registration) Register(ctx context.Context, ip, inviteCode string) (*R
 			return nil, ErrRateLimited
 		}
 	}
-	var inv *Invite
-	switch rg.Mode {
-	case RegInvite:
-		inv = rg.Invites[inviteCode]
+	if rg.Mode == RegInvite {
+		inv := rg.Invites[inviteCode]
 		if inv == nil || (inv.MaxUses > 0 && inv.Uses >= inv.MaxUses) {
 			return nil, ErrBadInvite
 		}
-	case RegOpen:
-		// no check
+		return inv, nil
+	}
+	return nil, nil
+}
+
+// Register validates the invite (when in invite mode), creates the
+// user, and mints the first token, returning the secret once.
+func (rg *Registration) Register(ctx context.Context, ip, inviteCode string) (*Result, error) {
+	rg.mu.Lock()
+	defer rg.mu.Unlock()
+	inv, err := rg.check(ip, inviteCode)
+	if err != nil {
+		return nil, err
 	}
 	subject, err := randomSubject()
 	if err != nil {
@@ -102,6 +109,29 @@ func (rg *Registration) Register(ctx context.Context, ip, inviteCode string) (*R
 		inv.Uses++
 	}
 	return &Result{User: u, TokenID: id, Token: full, CreatedAt: now}, nil
+}
+
+// RegisterNoToken validates like Register but creates only the user,
+// without an initial API token. Web signup uses this.
+func (rg *Registration) RegisterNoToken(ctx context.Context, ip, inviteCode string) (meta.User, error) {
+	rg.mu.Lock()
+	defer rg.mu.Unlock()
+	inv, err := rg.check(ip, inviteCode)
+	if err != nil {
+		return meta.User{}, err
+	}
+	subject, err := randomSubject()
+	if err != nil {
+		return meta.User{}, err
+	}
+	u, _, err := rg.Meta.UpsertUser(ctx, subject, rg.DefaultTier)
+	if err != nil {
+		return meta.User{}, err
+	}
+	if inv != nil {
+		inv.Uses++
+	}
+	return u, nil
 }
 
 func randomSubject() (string, error) {

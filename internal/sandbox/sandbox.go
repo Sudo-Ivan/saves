@@ -83,6 +83,15 @@ func FromConfig(c *config.Config, configPath string) (*Policy, error) {
 	if c.Auth.OIDC.Issuer != "" {
 		addPort(&p.ConnectTCP, urlPort(c.Auth.OIDC.Issuer, 443, 443))
 	}
+	if c.Web.OIDC.Enabled {
+		iss := c.Web.OIDC.Issuer
+		if iss == "" {
+			iss = c.Auth.OIDC.Issuer
+		}
+		if iss != "" {
+			addPort(&p.ConnectTCP, urlPort(iss, 443, 443))
+		}
+	}
 	addPort(&p.ConnectTCP, 53) // DNS
 	p.ConnectUDP = []uint16{53}
 	// The h3 listener binds UDP on h3_addr (defaulting to listen.addr).

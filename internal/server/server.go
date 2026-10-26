@@ -14,12 +14,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"regexp"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Sudo-Ivan/saves/internal/auth"
 	"github.com/Sudo-Ivan/saves/internal/blob"
 	"github.com/Sudo-Ivan/saves/internal/config"
+	"github.com/Sudo-Ivan/saves/internal/gc"
 	"github.com/Sudo-Ivan/saves/internal/meta"
 	"github.com/Sudo-Ivan/saves/internal/metrics"
 	"github.com/Sudo-Ivan/saves/internal/netx"
@@ -40,12 +43,20 @@ type Server struct {
 	Cfg   *config.Config
 	Clock func() time.Time
 
+	// Version is shown on the admin page only.
+	Version string
+
 	// rate limiting
 	ipLimit     *ratelimit.Limiter
 	principalRL *ratelimit.Limiter
 	accessLog   bool
 	ready       chan struct{}
 	draining    atomic.Bool
+	web         *webUI
+	gc          *gc.Collector
+
+	oidcMu sync.Mutex
+	oidc   *webOIDC
 }
 
 // Options for New.
@@ -77,6 +88,15 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 	}
 	if s.ipLimit == nil {
 		s.ipLimit = ratelimit.New(50, 100, 1<<16, o.Clock)
+	}
+	if cfg.Web.Enabled {
+		s.web = s.newWebUI()
+		if s.web.pub == nil || s.web.pub.Scheme != "https" {
+			if cfg.Web.CookieSecure != "always" && !isLoopback(cfg.Listen.Addr) &&
+				cfg.Listen.TLS.Mode == "none" {
+				s.Log.Warn("web cookies will not be Secure on a non-loopback listener")
+			}
+		}
 	}
 	close(s.ready)
 	return s
@@ -119,12 +139,18 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /v1/tokens", s.hMyTokens)
 	mux.HandleFunc("POST /v1/tokens", s.hMyTokenCreate)
 	mux.HandleFunc("DELETE /v1/tokens/{id}", s.hMyTokenRevoke)
+	mux.HandleFunc("GET /v1/tokens/{id}", s.hTokenGet)
+	mux.HandleFunc("PATCH /v1/tokens/{id}", s.hTokenPatch)
+	mux.HandleFunc("GET /v1/tokens/{id}/events", s.hTokenEvents)
+	mux.HandleFunc("GET /v1/tokens/{id}/stats", s.hTokenStats)
 	return mux
 }
 
+var reqIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 // requestID returns or mints one.
 func requestID(r *http.Request) string {
-	if id := r.Header.Get("X-Request-Id"); id != "" && len(id) <= 128 {
+	if id := r.Header.Get("X-Request-Id"); id != "" && reqIDRe.MatchString(id) {
 		return id
 	}
 	var b [12]byte
@@ -187,15 +213,10 @@ func (s *Server) authn(w http.ResponseWriter, r *http.Request) (auth.Principal, 
 }
 
 func (s *Server) clientIP(r *http.Request) string {
-	return netx.IPPrefix(netx.ClientIP(r, s.trustedCIDRs()))
+	return netx.IPPrefix(netx.ClientIPReal(r, s.trustedCIDRs(), s.Cfg.Proxy.RealIPHeader))
 }
 
-func (s *Server) trustedCIDRs() []netip.Prefix {
-	var out []netip.Prefix
-	for _, c := range s.Cfg.Auth.Proxy.TrustedCIDRs {
-		if p, err := netip.ParsePrefix(c); err == nil {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+func (s *Server) trustedCIDRs() []netip.Prefix { return s.Cfg.TrustedProxyPrefixes() }
+
+// SetGC wires the GC for admin-triggered runs.
+func (s *Server) SetGC(g *gc.Collector) { s.gc = g }

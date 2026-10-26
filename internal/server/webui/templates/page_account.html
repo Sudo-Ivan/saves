@@ -1,0 +1,35 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">Account</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  <dl class="detail-list">
+    <dt class="detail-list__key">Username</dt><dd class="detail-list__val">{{.Data.Username}}</dd>
+    <dt class="detail-list__key">Tier</dt><dd class="detail-list__val">{{.Data.Tier}}</dd>
+    <dt class="detail-list__key">Storage used</dt><dd class="detail-list__val">{{fsize .Data.Usage.UsedBytes}}{{if .Data.Usage.QuotaBytes}} of {{fsize .Data.Usage.QuotaBytes}}{{end}}</dd></dd>
+    <dt class="detail-list__key">Snapshots</dt><dd class="detail-list__val">{{.Data.Usage.Snapshots}}</dd>
+    <dt class="detail-list__key">Slots</dt><dd class="detail-list__val">{{.Data.Usage.Slots}}</dd>
+  </dl>
+</section>
+<section class="panel">
+  <h2 class="panel__title">Apps</h2>
+  {{if .Data.Apps}}
+  <table class="table">
+    <thead><tr><th class="table__head">App</th><th class="table__head num">Slots</th><th class="table__head num">Snapshots</th></tr></thead>
+    <tbody>
+    {{range .Data.Apps}}
+      <tr class="table__row">
+        <td class="table__cell"><a href="{{$.Base}}account/apps/{{.App}}">{{.App}}</a></td>
+        <td class="table__cell num">{{.Slots}}</td>
+        <td class="table__cell num">{{.Snapshots}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="empty">
+    <p class="empty__title">No apps yet</p>
+    <p class="empty__text">Point a saves client at this server and your first save appears here.</p>
+    <a class="button button--card" href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
+  </div>{{end}}
+</section>
+{{end}}

@@ -4,9 +4,12 @@ package server
 
 import (
 	"fmt"
+	"github.com/Sudo-Ivan/saves/internal/netx"
+	"github.com/Sudo-Ivan/saves/internal/service"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,6 +33,7 @@ func (s *Server) secureHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -48,9 +52,9 @@ func (s *Server) cors(next http.Handler) http.Handler {
 	maxAge := s.Cfg.CORS.MaxAge.Duration()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
+		w.Header().Add("Vary", "Origin")
 		if origin != "" && allowed[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", methods)
 			w.Header().Set("Access-Control-Allow-Headers", headers)
 			if maxAge > 0 {
@@ -124,12 +128,18 @@ func (w *statusWriter) ReadFrom(r io.Reader) (int64, error) {
 	return io.Copy(w.ResponseWriter, r)
 }
 
-// recover converts panics to 500 problems.
+// recover converts panics to 500 problems on /v1 and styled error
+// pages elsewhere.
 func (s *Server) recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
 				s.Log.Error("panic", "err", rec, "path", r.URL.Path)
+				if s.web != nil && !strings.HasPrefix(r.URL.Path, "/v1/") {
+					wv := &webReq{s: s, w: w, r: r, web: s.web}
+					wv.errorPage(500)
+					return
+				}
 				s.writeProblem(w, r, fmt.Errorf("panic: %v", rec))
 			}
 		}()
@@ -229,14 +239,41 @@ func (d *deadlineWriter) ReadFrom(r io.Reader) (int64, error) {
 
 type writerOnly struct{ io.Writer }
 
-// Handler assembles the middleware chain.
+// Handler assembles the middleware chain. /v1 goes to the API mux,
+// everything else to the web handler when enabled.
 func (s *Server) Handler() http.Handler {
-	h := http.Handler(s.Mux())
-	h = s.cors(h)
+	api := s.cors(http.Handler(s.Mux()))
+	var h http.Handler = api
+	if s.web != nil {
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/v1/") {
+				api.ServeHTTP(w, r)
+				return
+			}
+			s.webServe(w, r)
+		})
+	} else {
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/v1/") {
+				api.ServeHTTP(w, r)
+				return
+			}
+			api.ServeHTTP(w, r)
+		})
+	}
 	h = s.altSvc(h)
+	h = s.clientCtx(h)
 	h = s.requestLog(h)
 	h = s.secureHeaders(h)
 	h = s.wrapDeadline(h)
 	h = s.recover(h)
 	return h
+}
+
+// clientCtx records the caller address and user agent for audit events.
+func (s *Server) clientCtx(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := netx.ClientIPReal(r, s.trustedCIDRs(), s.Cfg.Proxy.RealIPHeader).String()
+		next.ServeHTTP(w, r.WithContext(service.WithClient(r.Context(), ip, r.UserAgent())))
+	})
 }

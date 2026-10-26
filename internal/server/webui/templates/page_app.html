@@ -1,0 +1,20 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">{{.Data.App}}</h1>
+  <nav class="breadcrumbs"><a href="{{.Base}}account">Account</a> / {{.Data.App}}</nav>
+  {{if .Data.Slots}}
+  <table class="table">
+    <thead><tr><th class="table__head">Slot</th><th class="table__head">Head snapshot</th><th class="table__head">Updated</th></tr></thead>
+    <tbody>
+    {{range .Data.Slots}}
+      <tr class="table__row">
+        <td class="table__cell"><a href="{{$.Base}}account/apps/{{$.Data.App}}/slots/{{.Name}}">{{.Name}}</a></td>
+        <td class="table__cell">{{if .HeadSnapshotID}}{{.HeadSnapshotID}}{{else}}-{{end}}</td>
+        <td class="table__cell">{{fdate .UpdatedAt}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p>No slots for this app yet.</p>{{end}}
+</section>
+{{end}}

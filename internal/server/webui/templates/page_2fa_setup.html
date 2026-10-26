@@ -1,0 +1,32 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">Set up two-factor authentication</h1>
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  {{if .Data.Done}}
+    <p class="notice notice--info" role="status">Two-factor authentication is now enabled.</p>
+    <h2 class="panel__subtitle">Recovery codes</h2>
+    <p>Store these codes somewhere safe. Each can be used once in place of an authenticator code. They are shown only now.</p>
+    <ul class="code-list">
+    {{range .Data.Codes}}<li class="code-list__item"><code>{{.}}</code></li>{{end}}
+    </ul>
+    <p><a class="button" href="{{.Base}}account/security">Back to security</a></p>
+  {{else}}
+    <p>Scan this code with your authenticator app, then enter the 6 digit code it shows.</p>
+    <svg class="qr" viewBox="0 0 {{.Data.QRSize}} {{.Data.QRSize}}" role="img" aria-label="TOTP enrollment QR code" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="{{.Data.QRSize}}" height="{{.Data.QRSize}}" fill="#fff"/>
+      {{range .Data.QR}}<rect x="{{.X}}" y="{{.Y}}" width="1" height="1" fill="#000"/>{{end}}
+    </svg>
+    <p>Secret: <code>{{.Data.SecretB32}}</code></p>
+    <p><code class="code--block">{{.Data.URI}}</code></p>
+    <form class="form" method="post" action="{{.Base}}account/security/2fa">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <input type="hidden" name="enroll" value="{{.Data.Sealed}}">
+      <div class="field">
+        <label class="field__label" for="code">Authentication code</label>
+        <input class="field__input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required autofocus>
+      </div>
+      <button class="button button--ink" type="submit">Enable</button>
+    </form>
+  {{end}}
+</section>
+{{end}}

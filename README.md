@@ -16,6 +16,10 @@ a small edit transfers only the changed data.
 - savesctl daemon for automatic sync and a system tray companion.
 - Peer hosting: one device embeds a saves node and other devices sync to
   it over pinned-identity QUIC.
+- Optional web UI: password and OIDC sign in, TOTP two-factor, snapshot
+  browsing and download, token and user administration.
+- Token expiry presets, per-token IP allowlists, and a per-token audit
+  log with hourly usage stats and CSV export.
 
 ## Install
 
@@ -41,7 +45,8 @@ Client:
 ## Docs
 
 docs/protocol.md, docs/cli.md, docs/vault.md, docs/security.md,
-docs/deployment.md, docs/operations.md, docs/tray.md, api/openapi.yaml.
+docs/deployment.md, docs/operations.md, docs/tray.md, docs/web.md,
+api/openapi.yaml.
 
 ## Status
 

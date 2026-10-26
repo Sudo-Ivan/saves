@@ -4,6 +4,7 @@ package server
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -473,6 +474,9 @@ func (s *Server) hAdminGC(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, &api.Problem{Code: api.CodeForbidden, Title: "admin required", Status: 403})
 		return
 	}
+	if s.gc != nil {
+		go func() { _, _ = s.gc.RunOnce(context.Background()) }() // #nosec G118 -- detached gc outlives the request
+	}
 	w.WriteHeader(202)
 }
 
@@ -484,7 +488,11 @@ func (s *Server) hMyTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Svc.ListTokens(r.Context(), p, p.User.ID)
-	s.respond(w, r, out, err)
+	if err != nil {
+		s.writeProblem(w, r, err)
+		return
+	}
+	s.writeJSON(w, 200, viewTokens(out))
 }
 
 func (s *Server) hMyTokenCreate(w http.ResponseWriter, r *http.Request) {
@@ -501,27 +509,32 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request, userID stri
 		return
 	}
 	var in struct {
-		Name      string   `json:"name"`
-		Scopes    []string `json:"scopes"`
-		Apps      []string `json:"apps"`
-		ExpiresAt *string  `json:"expires_at"`
+		Name         string   `json:"name"`
+		Scopes       []string `json:"scopes"`
+		Apps         []string `json:"apps"`
+		ExpiresAt    *string  `json:"expires_at"`
+		ExpiresIn    string   `json:"expires_in"`
+		AllowedCIDRs []string `json:"allowed_cidrs"`
 	}
 	if err := s.decodeJSON(w, r, &in, 1<<20); err != nil {
 		s.writeProblem(w, r, err)
 		return
 	}
-	var exp *time.Time
+	var raw json.RawMessage
 	if in.ExpiresAt != nil {
-		if t, err := time.Parse(time.RFC3339, *in.ExpiresAt); err == nil {
-			exp = &t
-		}
+		raw, _ = json.Marshal(*in.ExpiresAt)
 	}
-	out, err := s.Svc.CreateToken(r.Context(), p, userID, in.Name, in.Scopes, in.Apps, exp)
+	exp, _, err := expiryInput(raw, in.ExpiresIn)
 	if err != nil {
 		s.writeProblem(w, r, err)
 		return
 	}
-	s.writeJSON(w, 201, map[string]any{"id": out.Token.ID, "token": out.Full})
+	out, err := s.Svc.CreateToken(r.Context(), p, userID, in.Name, in.Scopes, in.Apps, exp, in.AllowedCIDRs)
+	if err != nil {
+		s.writeProblem(w, r, err)
+		return
+	}
+	s.writeJSON(w, 201, map[string]any{"id": out.Token.ID, "token": out.Full, "expires_at": out.Token.ExpiresAt, "allowed_cidrs": viewToken(out.Token).AllowedCIDRs})
 }
 
 func (s *Server) hMyTokenRevoke(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,11 @@
+General Sans is licensed under the ITF Free Font License (FFL) as
+distributed through Fontshare by the Indian Type Foundry (ITF).
+
+From the font name table (nameID 14): "This Font Software is protected
+under domestic and international trademark and copyright law. You agree
+to identify the ITF fonts by name and credit the ITF's ownership of the
+trademarks and copyrights in any design or production credits."
+License URL in the font: https://fontshare.com/terms
+
+The ITF FFL permits free use including embedding in websites. The full
+license text: https://fontshare.com/licenses/itf-ffl

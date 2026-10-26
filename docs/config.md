@@ -116,6 +116,11 @@ opaque bearer token method
 - auth.token.enabled: accept sv1_ bearer tokens
 - auth.token.last_used_interval: minimum interval between last_used writes
 - auth.token.cache_ttl: token validation cache lifetime; revocation propagates within this window
+- auth.token.max_ttl: maximum token lifetime; 0 unlimited
+- auth.token.default_ttl: expiry the web create form preselects; does not change API default of never
+- auth.token.max_per_user: maximum tokens per user; 0 unlimited
+- auth.token.audit_enabled: write per-token audit events
+- auth.token.audit_retention: audit event and usage retention; 0 keeps forever
 ### auth.oidc
 
 OIDC JWT bearer method
@@ -221,3 +226,54 @@ Prometheus metrics
 
 - metrics.enabled: expose metrics on the ops listener
 - metrics.namespace: metric name prefix
+## web
+
+browser UI, off by default
+
+- web.enabled: serve the web UI
+- web.instance_name: display name used in pages and TOTP issuer
+- web.public_url: external base URL like https://host/prefix, required for web OIDC
+- web.homepage: show the landing page at /, otherwise redirect to the sign in page
+- web.password_login: allow username and password sign in
+- web.secret (secret): master secret for cookie and TOTP sealing, minimum 32 characters
+- web.secret_file: path to file containing web.secret
+### web.session
+
+session lifetimes and limits
+
+- web.session.idle: idle timeout since last activity
+- web.session.absolute: maximum session lifetime
+- web.session.pending_ttl: window to finish the second factor step
+- web.session.max_2fa_attempts: wrong codes allowed on a pending session
+- web.cookie_secure: auto, always, or never: Secure cookie attribute control
+### web.hsts
+
+Strict-Transport-Security emission
+
+- web.hsts.enabled: emit HSTS on https requests
+- web.hsts.max_age: max-age value
+- web.hsts.include_subdomains: add includeSubDomains
+- web.hsts.preload: add preload
+- web.require_2fa: force password users to set up TOTP before using the UI
+- web.require_2fa_admin: force admins signed in by password to set up TOTP
+- web.login_per_min: login attempts per minute per client IP prefix
+### web.oidc
+
+OIDC authorization code sign in
+
+- web.oidc.enabled: offer OIDC sign in
+- web.oidc.issuer: issuer URL, defaults to auth.oidc.issuer
+- web.oidc.client_id: registered client id
+- web.oidc.client_secret (secret): client secret, empty means public client with PKCE only
+- web.oidc.client_secret_file: path to file containing client_secret
+- web.oidc.scopes: space separated scope request
+- web.oidc.label: sign in button label
+- web.oidc.auto_provision: create a user for a first time subject
+- web.oidc.admin_claim: id_token claim inspected for admin
+- web.oidc.admin_value: claim value granting admin
+## proxy
+
+reverse proxy trust for forwarded headers
+
+- proxy.trusted_cidrs (list): CIDRs allowed to set X-Forwarded-* and Forwarded headers
+- proxy.real_ip_header: extra single IP header honored from trusted peers, like X-Real-IP

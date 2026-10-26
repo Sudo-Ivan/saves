@@ -1,0 +1,29 @@
+{{define "main"}}
+<section class="auth-card">
+  <h1 class="auth-card__title">Create account</h1>
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  <form class="form" method="post" action="{{.Base}}register">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="field">
+      <label class="field__label" for="username">Username</label>
+      <input class="field__input" id="username" name="username" type="text" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label class="field__label" for="password">Password</label>
+      <input class="field__input" id="password" name="password" type="password" autocomplete="new-password" required>
+      <p class="field__hint">At least 12 characters.</p>
+    </div>
+    <div class="field">
+      <label class="field__label" for="password2">Confirm password</label>
+      <input class="field__input" id="password2" name="password2" type="password" autocomplete="new-password" required>
+    </div>
+    {{if .Data.Invite}}
+    <div class="field">
+      <label class="field__label" for="invite">Invite code</label>
+      <input class="field__input" id="invite" name="invite" type="text" autocomplete="off" required>
+    </div>
+    {{end}}
+    <button class="button button--ink" type="submit">Create account</button>
+  </form>
+</section>
+{{end}}

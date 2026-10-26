@@ -1,0 +1,12 @@
+{{define "main"}}
+<section class="error-page">
+  <h1 class="error-page__code">{{.Data.Status}}</h1>
+  <h2 class="error-page__title">{{.Data.ErrorTitle}}</h2>
+  <p class="error-page__text">{{.Data.ErrorText}}</p>
+  <p class="error-page__id">Request {{.RequestID}}</p>
+  <nav class="error-page__actions">
+    <a class="button" href="{{.Base}}">Home</a>
+    <a class="button button--secondary" href="{{.Base}}login">Sign in</a>
+  </nav>
+</section>
+{{end}}

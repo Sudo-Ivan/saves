@@ -64,6 +64,13 @@ type Store interface {
 	DeleteUser(ctx context.Context, id string) error
 
 	CreateToken(ctx context.Context, t Token) error
+	UpdateToken(ctx context.Context, id string, p TokenPatch) error
+	// Token audit and usage.
+	InsertTokenEvent(ctx context.Context, e TokenEvent) error
+	UpsertTokenUsage(ctx context.Context, b []UsageRow) ([]UsagePair, error)
+	ListTokenEvents(ctx context.Context, tokenID, kind, cursor string, limit int) ([]TokenEvent, string, error)
+	TokenStats(ctx context.Context, tokenID string) (TokenStats, error)
+	PurgeTokenAudit(ctx context.Context, before time.Time) error
 	GetToken(ctx context.Context, id string) (Token, error)
 	TouchToken(ctx context.Context, id string, at time.Time) error
 	ListTokens(ctx context.Context, userID string) ([]Token, error)
@@ -110,6 +117,34 @@ type Store interface {
 	FinishPurge(ctx context.Context, userID string) error
 	AcquireLease(ctx context.Context, name, holder string, ttl time.Duration) (bool, error)
 	Fsck(ctx context.Context, repair bool) (FsckReport, error)
+
+	// Web credentials, recovery codes, and browser sessions.
+	// GetCredentialByUsername matches the stored lowercase username.
+	GetCredentialByUsername(ctx context.Context, username string) (WebCredential, error)
+	GetCredential(ctx context.Context, userID string) (WebCredential, error)
+	// CreateCredential fails with ErrExists on a username clash.
+	CreateCredential(ctx context.Context, c WebCredential) error
+	UpdateCredential(ctx context.Context, userID string, p CredentialPatch) error
+	// SetRecoveryCodes replaces the whole set for a user.
+	SetRecoveryCodes(ctx context.Context, userID string, hashes [][32]byte) error
+	// ConsumeRecoveryCode atomically marks one code used and reports
+	// the remaining count; ErrNotFound when the code is unknown or
+	// already used.
+	ConsumeRecoveryCode(ctx context.Context, userID string, hash [32]byte) (remaining int, err error)
+	// AdvanceTOTPStep is an atomic compare and set: it stores step only
+	// when step is greater than the stored one, reporting success.
+	AdvanceTOTPStep(ctx context.Context, userID string, step int64) (bool, error)
+
+	CreateWebSession(ctx context.Context, ws WebSession) error
+	GetWebSession(ctx context.Context, idHash [32]byte) (WebSession, error)
+	TouchWebSession(ctx context.Context, idHash [32]byte, at time.Time) error
+	BumpWebSessionAttempts(ctx context.Context, idHash [32]byte) (int, error)
+	DeleteWebSession(ctx context.Context, idHash [32]byte) error
+	// DeleteUserSessions drops every session of a user, or all but
+	// except when except is non-nil.
+	DeleteUserSessions(ctx context.Context, userID string, except *[32]byte) (int, error)
+	ListWebSessions(ctx context.Context, userID string) ([]WebSession, error)
+	PurgeWebSessions(ctx context.Context, now time.Time) (int, error)
 }
 
 // Options configures a store instance.
@@ -146,16 +181,17 @@ type UserPatch struct {
 
 // Token is an API credential. Only the SHA-256 of the secret is stored.
 type Token struct {
-	ID         string
-	UserID     string
-	SecretHash [32]byte
-	Name       string
-	Scopes     []string
-	Apps       []string
-	CreatedAt  time.Time
-	ExpiresAt  *time.Time
-	RevokedAt  *time.Time
-	LastUsedAt *time.Time
+	ID           string
+	UserID       string
+	SecretHash   [32]byte
+	Name         string
+	Scopes       []string
+	Apps         []string
+	CreatedAt    time.Time
+	ExpiresAt    *time.Time
+	RevokedAt    *time.Time
+	LastUsedAt   *time.Time
+	AllowedCIDRs []string
 }
 
 // Snapshot is one version of a slot.
@@ -286,6 +322,63 @@ type FsckReport struct {
 	OrphanRefs int
 }
 
+// WebCredential holds the web sign-in data of a user.
+type WebCredential struct {
+	UserID       string
+	Username     string // stored lowercase, unique
+	PasswordHash string // PHC string, empty for OIDC only accounts
+	Admin        bool
+	MustChange   bool
+	TOTPSecret   []byte // sealed, nil when unset
+	TOTPEnabled  bool
+	TOTPLastStep int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// CredentialPatch updates the mutable credential columns. A nil field
+// leaves the column untouched.
+type CredentialPatch struct {
+	PasswordHash *string
+	MustChange   *bool
+	Admin        *bool
+	TOTPEnabled  *bool
+	// TOTPSecret nil leaves it, empty slice clears it, non-empty stores
+	// the new sealed secret.
+	TOTPSecret *[]byte
+	// TOTPLastStep resets the replay counter when non-nil.
+	TOTPLastStep *int64
+}
+
+// Web session kinds.
+const (
+	SessionPending = "pending"
+	SessionFull    = "full"
+)
+
+// Web session methods.
+const (
+	SessionMethodPassword = "password"
+	SessionMethodOIDC     = "oidc"
+)
+
+// WebSession is one browser session. Only the SHA-256 of the cookie
+// value is stored.
+type WebSession struct {
+	IDHash     [32]byte
+	UserID     string
+	Kind       string
+	Method     string
+	Admin      bool
+	CSRF       [32]byte
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+	IP         string
+	UserAgent  string
+	Attempts   int
+}
+
 // VaultRecord is one per-user vault header.
 type VaultRecord struct {
 	Header  []byte
@@ -413,4 +506,50 @@ func Open(ctx context.Context, driver, dsn string, opt Options) (Store, error) {
 		return nil, fmt.Errorf("meta: driver %q not registered (import its package)", driver)
 	}
 	return o(ctx, dsn, opt)
+}
+
+// TokenPatch edits the mutable token fields. Nil leaves a field alone.
+type TokenPatch struct {
+	Name      *string
+	ExpiresAt **time.Time
+	CIDRs     *[]string
+}
+
+// TokenEvent is one audit row.
+type TokenEvent struct {
+	ID, TokenID, UserID, Kind, IP, ActorID, UserAgent, RequestID, Detail string
+	At                                                                   time.Time
+}
+
+// UsageRow is one token_usage upsert row.
+type UsageRow struct {
+	TokenID, IP, UserAgent string
+	Bucket                 time.Time
+	Requests               int64
+	LastSeen               time.Time
+}
+
+// IPCount is a top-IP rollup row.
+// UsagePair reports a (token, ip) pair that had no usage row before an
+// upsert. First is true when the token had no usage rows at all.
+type UsagePair struct {
+	TokenID, IP string
+	First       bool
+}
+
+type IPCount struct {
+	IP        string
+	Requests  int64
+	LastSeen  time.Time
+	UserAgent string
+}
+
+// TokenStats aggregates usage for one token.
+type TokenStats struct {
+	Total, Last24h, Last7d, Last30d int64
+	Daily                           []int64 // last 30 days, zero filled
+	UniqueIPs30d                    int64
+	TopIPs                          []IPCount
+	Denied                          map[string]int64
+	FirstUse, LastUse               *time.Time
 }

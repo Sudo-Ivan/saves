@@ -1,0 +1,52 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{.InstanceName}} keeps your game saves synchronized between your devices.">
+<title>{{if .Title}}{{.Title}} - {{end}}{{.InstanceName}}</title>
+<link rel="stylesheet" href="{{asset "tokens.css"}}">
+<link rel="stylesheet" href="{{asset "base.css"}}">
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<link rel="icon" href="{{.Base}}static/favicon.svg" type="image/svg+xml">
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+<body class="page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="site-header__name" href="{{.Base}}">{{.InstanceName}}</a>
+  <nav class="site-nav" aria-label="Main">
+    {{if .Authed}}
+    <a class="site-nav__link" href="{{.Base}}account"{{if eq .Title "account"}} aria-current="page"{{end}}>Account</a>
+    <a class="site-nav__link" href="{{.Base}}account/tokens"{{if eq .Title "tokens"}} aria-current="page"{{end}}>Tokens</a>
+    <a class="site-nav__link" href="{{.Base}}account/security"{{if eq .Title "security"}} aria-current="page"{{end}}>Security</a>
+    {{if .Admin}}<a class="site-nav__link" href="{{.Base}}admin"{{if eq .Title "admin"}} aria-current="page"{{end}}>Admin</a>{{end}}
+    <form class="site-nav__form" method="post" action="{{.Base}}logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <button class="button button--link" type="submit">Sign out</button>
+    </form>
+    {{else}}
+    <a class="site-nav__link" href="{{.Base}}login"{{if eq .Title "login"}} aria-current="page"{{end}}>Sign in</a>
+    {{end}}
+  </nav>
+</header>
+<main id="main" class="page-main{{if not .Authed}} page-main--home{{end}}">
+{{template "main" .}}
+</main>
+{{if eq .Title "home"}}
+<footer class="site-footer">
+  <p class="site-footer__sign">Keep your saves close.</p>
+  <nav class="site-footer__links" aria-label="Footer">
+    <a href="https://github.com/Sudo-Ivan/saves">Project</a>
+    <a href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
+    {{if .Authed}}<a href="{{.Base}}account">Account</a>{{else}}<a href="{{.Base}}login">Sign in</a>{{end}}
+  </nav>
+  <p class="site-footer__fine">{{.InstanceName}}, a self-hosted save sync server.</p>
+</footer>
+{{else}}
+<footer class="site-footer site-footer--app">
+  <p class="site-footer__fine">{{.InstanceName}} · <a href="https://github.com/Sudo-Ivan/saves">Project</a></p>
+</footer>
+{{end}}
+</body>
+</html>{{end}}

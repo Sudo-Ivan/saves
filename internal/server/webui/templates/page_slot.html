@@ -1,0 +1,37 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">{{.Data.Slot}}</h1>
+  <nav class="breadcrumbs"><a href="{{.Base}}account">Account</a> / <a href="{{.Base}}account/apps/{{.Data.App}}">{{.Data.App}}</a> / {{.Data.Slot}}</nav>
+  {{if .Data.Snapshots}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr>
+      <th class="table__head">Snapshot</th><th class="table__head">Device</th><th class="table__head">Label</th>
+      <th class="table__head num">Size</th><th class="table__head num">Files</th><th class="table__head">Created</th><th class="table__head"></th>
+    </tr></thead>
+    <tbody>
+    {{range .Data.Snapshots}}
+      <tr class="table__row{{if eq .ID $.Data.Head}} table__row--current{{end}}">
+        <td class="table__cell">{{.ID}}{{if eq .ID $.Data.Head}} <span class="stamp">Current</span>{{end}}</td>
+        <td class="table__cell">{{.Device}}</td>
+        <td class="table__cell">{{.Label}}</td>
+        <td class="table__cell num">{{fsize .TotalBytes}}</td>
+        <td class="table__cell num">{{.FileCount}}</td>
+        <td class="table__cell">{{fdate .CreatedAt}}</td>
+        <td class="table__cell table__cell--actions">
+          <a class="button button--small" href="{{$.Base}}account/apps/{{$.Data.App}}/slots/{{$.Data.Slot}}/snapshots/{{.ID}}/archive.tar">Download</a>
+          <a class="button button--small button--danger" href="{{$.Base}}account/apps/{{$.Data.App}}/slots/{{$.Data.Slot}}/snapshots/{{.ID}}/delete">Delete</a>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <div class="empty">
+    <p class="empty__title">No snapshots yet</p>
+    <p class="empty__text">The client keeps each backup here once it syncs this slot.</p>
+  </div>{{end}}
+  <p class="panel__actions">
+    <a class="button button--danger" href="{{.Base}}account/apps/{{.Data.App}}/slots/{{.Data.Slot}}/delete">Delete slot</a>
+  </p>
+</section>
+{{end}}

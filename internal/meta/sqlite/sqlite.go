@@ -371,7 +371,8 @@ func scanToken(row *sql.Row) (meta.Token, error) {
 	var scopes, apps string
 	var created int64
 	var sh []byte
-	err := row.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last)
+	var cidr string
+	err := row.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last, &cidr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, meta.ErrNotFound
 	}
@@ -385,11 +386,12 @@ func scanToken(row *sql.Row) (meta.Token, error) {
 	t.ExpiresAt = tm(exp)
 	t.RevokedAt = tm(rev)
 	t.LastUsedAt = tm(last)
+	t.AllowedCIDRs = splitCSV(cidr)
 	return t, nil
 }
 
 // #nosec G101 -- column stores a hash, not a credential
-const tokenCols = `id, user_id, secret_hash, name, scopes, apps, created_at, expires_at, revoked_at, last_used_at`
+const tokenCols = `id, user_id, secret_hash, name, scopes, apps, created_at, expires_at, revoked_at, last_used_at, allowed_cidrs`
 
 func (s *Store) CreateToken(ctx context.Context, t meta.Token) error {
 	var created int64
@@ -398,9 +400,9 @@ func (s *Store) CreateToken(ctx context.Context, t meta.Token) error {
 	} else {
 		created = ns(t.CreatedAt)
 	}
-	_, err := s.w.ExecContext(ctx, `INSERT INTO tokens(`+tokenCols+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.w.ExecContext(ctx, `INSERT INTO tokens(`+tokenCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.UserID, t.SecretHash[:], t.Name, strings.Join(t.Scopes, ","), strings.Join(t.Apps, ","),
-		created, nsPtr(t.ExpiresAt), nsPtr(t.RevokedAt), nsPtr(t.LastUsedAt))
+		created, nsPtr(t.ExpiresAt), nsPtr(t.RevokedAt), nsPtr(t.LastUsedAt), strings.Join(t.AllowedCIDRs, ","))
 	return err
 }
 
@@ -426,7 +428,8 @@ func (s *Store) ListTokens(ctx context.Context, userID string) ([]meta.Token, er
 		var scopes, apps string
 		var created int64
 		var sh []byte
-		if err := rows.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last); err != nil {
+		var cidr string
+		if err := rows.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last, &cidr); err != nil {
 			return nil, err
 		}
 		copy(t.SecretHash[:], sh)
@@ -436,6 +439,7 @@ func (s *Store) ListTokens(ctx context.Context, userID string) ([]meta.Token, er
 		t.ExpiresAt = tm(exp)
 		t.RevokedAt = tm(rev)
 		t.LastUsedAt = tm(last)
+		t.AllowedCIDRs = splitCSV(cidr)
 		out = append(out, t)
 	}
 	return out, rows.Err()

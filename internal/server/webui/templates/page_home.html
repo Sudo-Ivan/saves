@@ -1,0 +1,75 @@
+{{define "main"}}
+<section class="hero">
+  <div class="hero__col">
+    <h1 class="hero__title">Your saves, on your server.</h1>
+    <p class="hero__text">{{.InstanceName}} syncs game saves between your machines.</p>
+    <div class="hero__actions">
+      <a class="button button--ink" href="{{.Base}}login">Sign in</a>
+      {{if .Data.Register}}<a class="button button--card" href="{{.Base}}register">Create account</a>{{end}}
+      <a class="hero__link" href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
+    </div>
+  </div>
+  <div class="desk-scene" aria-hidden="true">
+    <div class="slot-card stock">
+      <p class="slot-card__name">Save slot</p>
+      <p class="slot-card__rule"></p>
+      <p class="slot-card__row"><span>Game</span><span>Device</span></p>
+      <p class="slot-card__row"><span>Snapshots</span><span>History</span></p>
+    </div>
+    <div class="snap-stack">
+      <div class="snap-card stock"><span>Snapshot</span><span>Kept</span></div>
+      <div class="snap-card stock"><span>Snapshot</span><span>Kept</span></div>
+      <div class="snap-card stock"><span>Snapshot</span><span>Kept</span></div>
+    </div>
+    <div class="envelope stock">
+      <span class="envelope__mark">Encrypted</span>
+      <p class="envelope__flap"></p>
+      <span>Sealed before it leaves</span>
+    </div>
+  </div>
+</section>
+
+<section class="section section--paper">
+  <div class="container section__inner">
+    <p class="statement">When the vault is on, the server stores ciphertext only.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container split">
+    <div class="split__text">
+      <h2>Edits move, not whole files.</h2>
+      <p class="lead">Chunked delta sync sends only what changed.</p>
+    </div>
+    <div class="sheet stock">
+      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
+      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
+      <p class="sheet__row"><span>Snapshot</span><span class="fig">kept</span></p>
+      <p class="sheet__row"><span>Uploads resume</span><span class="fig">always</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container split">
+    <div class="split__text">
+      <h2>Run your own server.</h2>
+      <p class="lead">Self-hosted, peer to peer, cross-platform.</p>
+    </div>
+    <div class="rows">
+    <div class="row">
+      <p class="row__title">Your own server</p>
+      <p class="row__text">Run {{.InstanceName}} yourself, on a host you control.</p>
+    </div>
+    <div class="row">
+      <p class="row__title">Peer hosting</p>
+      <p class="row__text">One device can host the node the others sync to.</p>
+    </div>
+    <div class="row">
+      <p class="row__title">Cross-platform clients</p>
+      <p class="row__text">The client syncs saves across platforms.</p>
+    </div>
+    </div>
+  </div>
+</section>
+{{end}}

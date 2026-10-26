@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/netip"
+	"net/url"
 	"os"
 	"reflect"
 	"regexp"
@@ -352,7 +354,96 @@ func (c *Config) Validate() error {
 	if c.CORS.Enabled && len(c.CORS.AllowedOrigins) == 0 {
 		return fmt.Errorf("config: cors.enabled requires allowed_origins")
 	}
+	for _, o := range c.CORS.AllowedOrigins {
+		if err := validOrigin(o); err != nil {
+			return err
+		}
+	}
+	for _, cidr := range c.Proxy.TrustedCIDRs {
+		if _, err := netip.ParsePrefix(cidr); err != nil {
+			return fmt.Errorf("config: proxy.trusted_cidrs %q invalid", cidr)
+		}
+	}
+	if err := c.validateWeb(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validOrigin rejects wildcard and malformed cors allowed_origins
+// entries; only scheme://host[:port] origin forms are accepted.
+func validOrigin(o string) error {
+	if o == "*" || o == "null" || o == "" {
+		return fmt.Errorf("config: cors.allowed_origins %q invalid", o)
+	}
+	u, err := url.Parse(o)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return fmt.Errorf("config: cors.allowed_origins %q invalid: must be an origin like https://host[:port]", o)
+	}
+	return nil
+}
+
+// validateWeb checks the web section.
+func (c *Config) validateWeb() error {
+	w := &c.Web
+	switch w.CookieSecure {
+	case "", "auto", "always", "never":
+	default:
+		return fmt.Errorf("config: web.cookie_secure %q invalid", w.CookieSecure)
+	}
+	if w.PublicURL != "" {
+		u, err := url.Parse(w.PublicURL)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" ||
+			u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return fmt.Errorf("config: web.public_url must be http(s)://host[/prefix] without query, fragment or credentials")
+		}
+	}
+	if !w.Enabled {
+		return nil
+	}
+	if len(w.Secret) < 32 {
+		return fmt.Errorf("config: web.secret is required (minimum 32 characters) when web is enabled")
+	}
+	if !w.PasswordLogin && !w.OIDC.Enabled {
+		return fmt.Errorf("config: web requires password_login or web.oidc.enabled")
+	}
+	if w.LoginPerMin <= 0 || w.Session.Idle <= 0 || w.Session.Absolute <= 0 ||
+		w.Session.PendingTTL <= 0 || w.Session.Max2FAAttempts <= 0 {
+		return fmt.Errorf("config: web session and login limit values must be positive")
+	}
+	if w.OIDC.Enabled {
+		if w.PublicURL == "" {
+			return fmt.Errorf("config: web.public_url is required when web.oidc.enabled")
+		}
+		if w.OIDC.ClientID == "" {
+			return fmt.Errorf("config: web.oidc.client_id is required when web.oidc.enabled")
+		}
+		iss := w.OIDC.Issuer
+		if iss == "" {
+			iss = c.Auth.OIDC.Issuer
+		}
+		if err := validIssuer(iss); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validIssuer requires https except for loopback hosts.
+func validIssuer(iss string) error {
+	u, err := url.Parse(iss)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("config: oidc issuer %q invalid", iss)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	host := u.Hostname()
+	if u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
+		return nil
+	}
+	return fmt.Errorf("config: oidc issuer %q must be https (http only allowed for loopback)", iss)
 }
 
 // Redacted returns a copy of c with every secret field replaced.
@@ -466,4 +557,20 @@ func DiffReloadable(a, b Config) []string {
 func hasSecretTag(f reflect.StructField) bool {
 	_, ok := f.Tag.Lookup("secret")
 	return ok
+}
+
+// TrustedProxyPrefixes returns the peers allowed to set forwarded
+// headers: proxy.trusted_cidrs, else auth.proxy.trusted_cidrs.
+func (c *Config) TrustedProxyPrefixes() []netip.Prefix {
+	src := c.Proxy.TrustedCIDRs
+	if len(src) == 0 {
+		src = c.Auth.Proxy.TrustedCIDRs
+	}
+	var out []netip.Prefix
+	for _, s := range src {
+		if p, err := netip.ParsePrefix(s); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -50,8 +50,14 @@ type Service struct {
 	Log     Logger
 
 	// TokenInvalidator drops a cached token validation on the local
-	// auth cache after revocation.
+	// auth cache after revocation or an edit.
 	TokenInvalidator func(id string)
+	// TokenMaxPerUser caps tokens per user (0 unlimited).
+	TokenMaxPerUser int
+	// TokenMaxTTL caps token lifetime (0 unlimited).
+	TokenMaxTTL time.Duration
+	// AuditEnabled writes token audit events.
+	AuditEnabled bool
 
 	// Events is the per-user SSE hub (may be nil).
 	Events *events.Hub
@@ -74,6 +80,9 @@ type Options struct {
 	Log                         Logger
 	MaxConcurrentUploads        int // global
 	MaxConcurrentUploadsPerUser int
+	TokenMaxPerUser             int
+	TokenMaxTTL                 time.Duration
+	AuditEnabled                bool
 }
 
 // New wires a service.
@@ -92,6 +101,7 @@ func New(m meta.Store, b blob.Store, q *quota.Resolver, o Options) *Service {
 	}
 	return &Service{
 		Meta: m, Blob: b, Quota: q, Clock: o.Clock, Metrics: o.Metrics, Log: o.Log,
+		TokenMaxPerUser: o.TokenMaxPerUser, TokenMaxTTL: o.TokenMaxTTL, AuditEnabled: o.AuditEnabled,
 		globalSem: make(chan struct{}, o.MaxConcurrentUploads),
 		maxUserUp: o.MaxConcurrentUploadsPerUser,
 	}

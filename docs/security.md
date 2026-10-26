@@ -9,8 +9,31 @@ vault is enabled. Admins with the admin scope can manage users and data.
 ## Authentication
 
 Bearer sv1_ tokens with read, write or admin scopes, hashed at rest.
+A token can never out-scope or out-range its creator (scopes must be a
+subset of the caller's, apps within the caller's allowlist). Tokens may
+restrict the client address with allowed_cidrs. The client IP is the
+direct peer, resolved through proxy.trusted_cidrs and
+proxy.real_ip_header when those are configured, so a spoofed
+X-Forwarded-For from an untrusted peer cannot satisfy an allowlist. A
+denied request returns the same 401 body as a bad token. Per-token
+audit events record management actions and denied authentications
+(denied events only when the secret was correct, rate limited one per
+token per address per minute). Usage is aggregated hourly per address.
+Both are retained for auth.token.audit_retention (default 90d) and never
+contain secrets or raw URLs.
 OIDC JWTs, trusted proxy headers and anonymous IP identity are
 configurable. Registration is closed, invite or open.
+
+## Web UI
+
+The optional web UI stores only argon2id password hashes, sealed TOTP
+secrets, hashed recovery codes, and SHA-256 session ids. Session and
+CSRF cookies are HttpOnly. Every form carries a CSRF token plus Fetch
+Metadata checks; responses send a strict CSP with no inline script or
+style. Login failures are generic and rate limited per IP prefix and
+per username. Audit log lines record ids, methods and IP prefixes only:
+passwords, tokens, codes, cookie values and secrets are never logged.
+See docs/web.md.
 
 ## Rate limiting
 

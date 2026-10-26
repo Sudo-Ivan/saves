@@ -40,6 +40,9 @@ func Run(t *testing.T, factory Factory) {
 	t.Run("SoftDeletePurge", func(t *testing.T) { testPurge(t, factory) })
 	t.Run("Lease", func(t *testing.T) { testLease(t, factory) })
 	t.Run("Pagination", func(t *testing.T) { testPagination(t, factory) })
+	t.Run("Web", func(t *testing.T) { testWeb(t, factory) })
+	t.Run("TokensAudit", func(t *testing.T) { TokensAudit(t, factory) })
+	t.Run("TokensUsage", func(t *testing.T) { TokensUsage(t, factory) })
 
 	t.Run("StressQuota", func(t *testing.T) { stressQuota(t, factory) })
 	t.Run("StressGCRace", func(t *testing.T) { stressGCRace(t, factory) })

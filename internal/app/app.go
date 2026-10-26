@@ -369,19 +369,36 @@ func cmdServe(args []string) int {
 		Metrics:                     met,
 		MaxConcurrentUploads:        cfg.Limits.MaxConcurrentUploads,
 		MaxConcurrentUploadsPerUser: 4,
+		TokenMaxPerUser:             cfg.Auth.Token.MaxPerUser,
+		TokenMaxTTL:                 cfg.Auth.Token.MaxTTL.Duration(),
+		AuditEnabled:                cfg.Auth.Token.AuditEnabled,
 	})
 	svc.Events = events.New(cfg.Limits.MaxEventStreams, 64)
 	chain, reg, err := buildAuth(cfg, m)
-	for _, a := range chain {
-		if ta, ok := a.(*auth.TokenAuthenticator); ok {
-			svc.TokenInvalidator = ta.Invalidate
-		}
-	}
 	if err != nil {
 		logger.Error("auth", "err", err)
 		return 1
 	}
+	var tokAudit *server.TokenAudit
+	if cfg.Auth.Token.AuditEnabled {
+		tokAudit = server.NewTokenAudit(m, logger, cfg.TrustedProxyPrefixes(), cfg.Proxy.RealIPHeader, time.Now)
+		defer func() {
+			c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			tokAudit.Close(c)
+		}()
+	}
+	for _, a := range chain {
+		if ta, ok := a.(*auth.TokenAuthenticator); ok {
+			svc.TokenInvalidator = ta.Invalidate
+			if tokAudit != nil {
+				ta.RecordUsage = tokAudit.Add
+				ta.RecordEvent = tokAudit.Record
+			}
+		}
+	}
 	srv := server.New(svc, m, b, chain, reg, cfg, server.Options{Logger: logger, Metrics: met})
+	srv.Version = Version
 	runner := server.NewRunner(srv, cfg)
 	logVar := &slog.LevelVar{}
 	_ = logVar
@@ -400,10 +417,38 @@ func cmdServe(args []string) int {
 	// GC loop.
 	gcCtx, gcStop := context.WithCancel(ctx)
 	defer gcStop()
-	go gc.New(m, b, gc.Options{
+	g := gc.New(m, b, gc.Options{
 		Holder: cfg.GC.LeaseHolder, Interval: cfg.GC.Interval.Duration(),
 		Grace: cfg.GC.GracePeriod.Duration(), BatchSize: cfg.GC.BatchSize,
-	}).Run(gcCtx)
+	})
+	srv.SetGC(g)
+	go g.Run(gcCtx)
+
+	// Housekeeping sweep every 10 minutes: expired web sessions and
+	// token audit rows past their retention.
+	if cfg.Web.Enabled || (cfg.Auth.Token.AuditEnabled && cfg.Auth.Token.AuditRetention > 0) {
+		go func() {
+			t := time.NewTicker(10 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-gcCtx.Done():
+					return
+				case <-t.C:
+					if cfg.Web.Enabled {
+						if n, err := m.PurgeWebSessions(gcCtx, time.Now()); err == nil && n > 0 {
+							logger.Info("web sessions purged", "n", n)
+						}
+					}
+					if ret := cfg.Auth.Token.AuditRetention.Duration(); cfg.Auth.Token.AuditEnabled && ret > 0 {
+						if err := m.PurgeTokenAudit(gcCtx, time.Now().Add(-ret)); err != nil {
+							logger.Warn("token audit purge", "err", err)
+						}
+					}
+				}
+			}
+		}()
+	}
 
 	// Ops listener.
 	if cfg.Ops.Enabled {
@@ -457,7 +502,9 @@ func buildAuth(cfg *config.Config, m meta.Store) (auth.Chain, *auth.Registration
 			if cfg.Auth.Token.Enabled {
 				ta := &auth.TokenAuthenticator{
 					Meta: m, TouchTTL: cfg.Auth.Token.LastUsedInterval.Duration(),
-					CacheTTL: cfg.Auth.Token.CacheTTL.Duration(),
+					CacheTTL:       cfg.Auth.Token.CacheTTL.Duration(),
+					TrustedProxies: cfg.TrustedProxyPrefixes(),
+					RealIPHeader:   cfg.Proxy.RealIPHeader,
 				}
 				chain = append(chain, ta)
 			}

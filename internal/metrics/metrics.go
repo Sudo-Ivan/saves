@@ -24,6 +24,7 @@ type Metrics struct {
 	gcRuns         *prometheus.CounterVec
 	gcDeleted      *prometheus.CounterVec
 	uploadInFlight prometheus.Gauge
+	webLogins      *prometheus.CounterVec
 }
 
 // New builds a registry with go and process collectors plus build info.
@@ -57,8 +58,12 @@ func New(namespace, version string) *Metrics {
 			Namespace: namespace, Name: "uploads_in_flight",
 			Help: "chunk uploads in progress",
 		}),
+		webLogins: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace, Name: "web_logins_total",
+			Help: "web login attempts by result",
+		}, []string{"result"}),
 	}
-	reg.MustRegister(m.opLatency, m.authFails, m.gcRuns, m.gcDeleted, m.uploadInFlight)
+	reg.MustRegister(m.opLatency, m.authFails, m.gcRuns, m.gcDeleted, m.uploadInFlight, m.webLogins)
 	return m
 }
 
@@ -88,6 +93,9 @@ func (m *Metrics) GCRun(err error, chunks, manifests, users int) {
 
 // UploadsInFlight returns the in-flight upload gauge.
 func (m *Metrics) UploadsInFlight() prometheus.Gauge { return m.uploadInFlight }
+
+// WebLogin records a web login outcome.
+func (m *Metrics) WebLogin(result string) { m.webLogins.WithLabelValues(result).Inc() }
 
 // WrapBlob decorates a blob.Store with latency histograms.
 func WrapBlob(b blob.Store, reg *prometheus.Registry, namespace string) blob.Store {

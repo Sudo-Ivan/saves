@@ -3,6 +3,7 @@ module github.com/Sudo-Ivan/saves
 go 1.27
 
 require (
+	github.com/boombuler/barcode v1.1.0
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/landlock-lsm/go-landlock v0.10.1

@@ -29,6 +29,14 @@ Notes:
   stream module; use stream{} with hash $remote_addr consistent for UDP.
 - Secrets are injected with *_file fields; mount them read only.
 
+## Web UI
+
+Enable the browser UI with SAVES_WEB_ENABLED=true and a secret via
+SAVES_WEB_SECRET_FILE, and see docs/web.md for configuration, OIDC
+setup, and reverse proxy snippets (nginx, Caddy, Traefik). When fronted
+by a proxy set proxy.trusted_cidrs and web.public_url so forwarded
+proto/host headers are honored safely.
+
 ## Sizing
 
 A single small host handles tens of devices. HA sizing is bounded by

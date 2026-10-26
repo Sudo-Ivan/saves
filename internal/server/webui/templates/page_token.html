@@ -1,0 +1,126 @@
+{{define "main"}}
+{{with .Data}}
+<section class="panel">
+  <h1 class="panel__title">{{if .Token.Name}}{{.Token.Name}}{{else}}Unnamed token{{end}}</h1>
+  <nav class="breadcrumbs"><a href="{{$.Base}}account/tokens">Tokens</a> / {{.Token.ID}}</nav>
+  {{if .Notice}}<p class="notice notice--info" role="status">{{.Notice}}</p>{{end}}
+  {{if .Error}}<p class="notice notice--error" role="alert">{{.Error}}</p>{{end}}
+  <dl class="detail-list">
+    {{if .Foreign}}<dt class="detail-list__key">Owner</dt><dd class="detail-list__val">{{.Owner}}</dd>{{end}}
+    <dt class="detail-list__key">Status</dt><dd class="detail-list__val">{{.Token.Status}}</dd>
+    <dt class="detail-list__key">Scopes</dt><dd class="detail-list__val">{{range $i, $s := .Token.Scopes}}{{if $i}}, {{end}}{{$s}}{{end}}</dd>
+    <dt class="detail-list__key">Apps</dt><dd class="detail-list__val">{{if .Token.Apps}}{{range $i, $a := .Token.Apps}}{{if $i}}, {{end}}{{$a}}{{end}}{{else}}All apps{{end}}</dd>
+    <dt class="detail-list__key">Created</dt><dd class="detail-list__val">{{fdate .Token.CreatedAt}}</dd>
+    <dt class="detail-list__key">Expires</dt><dd class="detail-list__val">{{if .Token.ExpiresAt}}{{fdatep .Token.ExpiresAt}}, {{.Token.ExpiresN}}{{else}}Never{{end}}</dd>
+    <dt class="detail-list__key">Allowed addresses</dt><dd class="detail-list__val">{{if .Token.AllowedCIDRs}}{{range $i, $a := .Token.AllowedCIDRs}}{{if $i}}, {{end}}{{$a}}{{end}}{{else}}Any address{{end}}</dd>
+    <dt class="detail-list__key">Last used</dt><dd class="detail-list__val">{{if .Token.LastUsedAt}}{{fdatep .Token.LastUsedAt}}{{else}}Not used yet{{end}}</dd>
+  </dl>
+  {{if not .Revoked}}
+  <p class="panel__actions"><a class="button button--danger" href="{{$.Base}}account/tokens/{{.Token.ID}}/revoke">Revoke token</a></p>
+  {{end}}
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">Usage</h2>
+  <dl class="stats">
+    <div class="stats__item"><dt class="stats__label">Total requests</dt><dd class="stats__value">{{.Stats.Total}}</dd></div>
+    <div class="stats__item"><dt class="stats__label">Last 24 hours</dt><dd class="stats__value">{{.Stats.Last24h}}</dd></div>
+    <div class="stats__item"><dt class="stats__label">Last 7 days</dt><dd class="stats__value">{{.Stats.Last7d}}</dd></div>
+    <div class="stats__item"><dt class="stats__label">Last 30 days</dt><dd class="stats__value">{{.Stats.Last30d}}</dd></div>
+    <div class="stats__item"><dt class="stats__label">Addresses, 30 days</dt><dd class="stats__value">{{.Stats.UniqueIPs30d}}</dd></div>
+    <div class="stats__item"><dt class="stats__label">First use</dt><dd class="stats__value stats__value--text">{{if .Stats.FirstUse}}{{fdatep .Stats.FirstUse}}{{else}}Not used yet{{end}}</dd></div>
+  </dl>
+  {{if .Stats.Total}}
+  <figure class="chart">
+    <svg class="chart__svg" viewBox="0 0 298 60" role="img" aria-label="Requests per day for the last 30 days, busiest day {{.ChartMax}}">
+      {{range .Bars}}<rect class="chart__bar" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Day}}: {{.Count}}</title></rect>{{end}}
+    </svg>
+    <figcaption class="chart__caption">Requests per day, last 30 days.</figcaption>
+  </figure>
+  {{end}}
+  {{if .Stats.TopIPs}}
+  <h3 class="panel__subtitle">Top addresses</h3>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Address</th><th class="table__head num">Requests</th><th class="table__head">Last seen</th><th class="table__head">Client</th></tr></thead>
+    <tbody>
+    {{range .Stats.TopIPs}}
+      <tr class="table__row"><td class="table__cell">{{.IP}}</td><td class="table__cell num">{{.Requests}}</td><td class="table__cell">{{fdate .LastSeen}}</td><td class="table__cell">{{trunc .UserAgent 60}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else if not .Stats.Total}}
+  <div class="empty">
+    <p class="empty__title">No requests yet</p>
+    <p class="empty__text">Usage appears here a short while after a client first uses this token.</p>
+  </div>{{end}}
+  {{if .Stats.Denied}}
+  <h3 class="panel__subtitle">Blocked requests, 30 days</h3>
+  <dl class="detail-list">
+    {{range $k, $n := .Stats.Denied}}<dt class="detail-list__key">{{eventLabel $k}}</dt><dd class="detail-list__val">{{$n}}</dd>{{end}}
+  </dl>
+  {{end}}
+</section>
+
+{{if not .Revoked}}
+<section class="panel">
+  <h2 class="panel__title">Settings</h2>
+  <form class="form" method="post" action="{{$.Base}}account/tokens/{{.Token.ID}}/edit">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <div class="field">
+      <label class="field__label" for="name">Name</label>
+      <input class="field__input" id="name" name="name" type="text" maxlength="128" value="{{.Form.Name}}" required>
+    </div>
+    <div class="field">
+      <label class="field__label" for="expires">Expires</label>
+      <select class="field__select" id="expires" name="expires">
+        {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      <p class="field__hint">Lifetimes count from now. Keep current leaves the expiry unchanged.</p>
+    </div>
+    <div class="field">
+      <label class="field__label" for="expires_custom">Exact expiry (UTC, optional, overrides the list)</label>
+      <input class="field__input" id="expires_custom" name="expires_custom" type="datetime-local" value="{{.Form.Custom}}">
+      {{if .LimitNote}}<p class="field__hint">{{.LimitNote}}</p>{{end}}
+    </div>
+    <div class="field">
+      <label class="field__label" for="allowed_cidrs">Allowed addresses</label>
+      <textarea class="field__input" id="allowed_cidrs" name="allowed_cidrs" rows="3" autocomplete="off" spellcheck="false">{{.Form.CIDRs}}</textarea>
+      <p class="field__hint">One address or CIDR per line. Leave empty to allow any address. Your address is <code id="my-ip">{{.ClientIP}}</code>.</p>
+      <p><button class="button button--small" type="button" data-append-ip="my-ip" data-target="allowed_cidrs" hidden>Add my address</button></p>
+    </div>
+    <button class="button button--ink" type="submit">Save changes</button>
+  </form>
+</section>
+{{end}}
+
+<section class="panel">
+  <h2 class="panel__title">Audit log</h2>
+  <form class="form form--inline" method="get" action="{{$.Base}}account/tokens/{{.Token.ID}}">
+    <div class="field">
+      <label class="field__label" for="kind">Event</label>
+      <select class="field__select" id="kind" name="kind">
+        <option value="">All events</option>
+        {{range .Kinds}}<option value="{{.Value}}"{{if eq .Value $.Data.Kind}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </div>
+    <button class="button" type="submit">Filter</button>
+    <a class="button" href="{{$.Base}}account/tokens/{{.Token.ID}}/audit.csv{{if .Kind}}?kind={{.Kind}}{{end}}">Download CSV</a>
+  </form>
+  {{if .Events}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Time</th><th class="table__head">Event</th><th class="table__head">Address</th><th class="table__head">Client</th><th class="table__head">Detail</th></tr></thead>
+    <tbody>
+    {{range .Events}}
+      <tr class="table__row"><td class="table__cell">{{fdate .At}}</td><td class="table__cell">{{eventLabel .Kind}}</td><td class="table__cell">{{.IP}}</td><td class="table__cell">{{trunc .UserAgent 60}}</td><td class="table__cell">{{.Detail}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{if .Next}}<p><a class="button button--small" href="{{$.Base}}account/tokens/{{.Token.ID}}?{{if .Kind}}kind={{.Kind}}&amp;{{end}}cursor={{.Next}}">Older events</a></p>{{end}}
+  {{else}}
+  <div class="empty">
+    <p class="empty__title">No events{{if .Kind}} of this kind{{end}}</p>
+    <p class="empty__text">Creation, changes, new addresses and blocked requests are recorded here.</p>
+  </div>{{end}}
+</section>
+{{end}}
+{{end}}

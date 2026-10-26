@@ -20,6 +20,62 @@ type Config struct {
 	Log          LogConfig          `json:"log" doc:"logging"`
 	CORS         CORSConfig         `json:"cors" doc:"cross origin resource sharing, off by default"`
 	Metrics      MetricsConfig      `json:"metrics" doc:"Prometheus metrics"`
+	Web          WebConfig          `json:"web" doc:"browser UI, off by default"`
+	Proxy        ProxyTrustConfig   `json:"proxy" doc:"reverse proxy trust for forwarded headers"`
+}
+
+// WebConfig controls the built in browser UI.
+type WebConfig struct {
+	Enabled         bool             `json:"enabled" doc:"serve the web UI"`
+	InstanceName    string           `json:"instance_name" doc:"display name used in pages and TOTP issuer"`
+	PublicURL       string           `json:"public_url" doc:"external base URL like https://host/prefix, required for web OIDC"`
+	Homepage        bool             `json:"homepage" doc:"show the landing page at /, otherwise redirect to the sign in page"`
+	PasswordLogin   bool             `json:"password_login" doc:"allow username and password sign in"`
+	Secret          string           `json:"secret" doc:"master secret for cookie and TOTP sealing, minimum 32 characters" secret:""`
+	SecretFile      string           `json:"secret_file" doc:"path to file containing web.secret"`
+	Session         WebSessionConfig `json:"session" doc:"session lifetimes and limits"`
+	CookieSecure    string           `json:"cookie_secure" doc:"auto, always, or never: Secure cookie attribute control"`
+	HSTS            HSTSConfig       `json:"hsts" doc:"Strict-Transport-Security emission"`
+	Require2FA      bool             `json:"require_2fa" doc:"force password users to set up TOTP before using the UI"`
+	Require2FAAdmin bool             `json:"require_2fa_admin" doc:"force admins signed in by password to set up TOTP"`
+	LoginPerMin     float64          `json:"login_per_min" doc:"login attempts per minute per client IP prefix"`
+	OIDC            WebOIDCConfig    `json:"oidc" doc:"OIDC authorization code sign in"`
+}
+
+// WebSessionConfig controls session lifetimes.
+type WebSessionConfig struct {
+	Idle           Duration `json:"idle" doc:"idle timeout since last activity"`
+	Absolute       Duration `json:"absolute" doc:"maximum session lifetime"`
+	PendingTTL     Duration `json:"pending_ttl" doc:"window to finish the second factor step"`
+	Max2FAAttempts int      `json:"max_2fa_attempts" doc:"wrong codes allowed on a pending session"`
+}
+
+// HSTSConfig controls the Strict-Transport-Security header.
+type HSTSConfig struct {
+	Enabled           bool     `json:"enabled" doc:"emit HSTS on https requests"`
+	MaxAge            Duration `json:"max_age" doc:"max-age value"`
+	IncludeSubdomains bool     `json:"include_subdomains" doc:"add includeSubDomains"`
+	Preload           bool     `json:"preload" doc:"add preload"`
+}
+
+// WebOIDCConfig controls OIDC sign in with authorization code and PKCE.
+type WebOIDCConfig struct {
+	Enabled          bool   `json:"enabled" doc:"offer OIDC sign in"`
+	Issuer           string `json:"issuer" doc:"issuer URL, defaults to auth.oidc.issuer"`
+	ClientID         string `json:"client_id" doc:"registered client id"`
+	ClientSecret     string `json:"client_secret" doc:"client secret, empty means public client with PKCE only" secret:""`
+	ClientSecretFile string `json:"client_secret_file" doc:"path to file containing client_secret"`
+	Scopes           string `json:"scopes" doc:"space separated scope request"`
+	Label            string `json:"label" doc:"sign in button label"`
+	AutoProvision    bool   `json:"auto_provision" doc:"create a user for a first time subject"`
+	AdminClaim       string `json:"admin_claim" doc:"id_token claim inspected for admin"`
+	AdminValue       string `json:"admin_value" doc:"claim value granting admin"`
+}
+
+// ProxyTrustConfig controls trust in reverse proxy forwarded headers.
+type ProxyTrustConfig struct {
+	TrustedCIDRs []string `json:"trusted_cidrs" doc:"CIDRs allowed to set X-Forwarded-* and Forwarded headers"`
+	RealIPHeader string   `json:"real_ip_header" doc:"extra single IP header honored from trusted peers, like X-Real-IP"`
 }
 
 // ListenConfig controls the main HTTP listener.
@@ -142,6 +198,11 @@ type TokenAuthConfig struct {
 	Enabled          bool     `json:"enabled" doc:"accept sv1_ bearer tokens"`
 	LastUsedInterval Duration `json:"last_used_interval" doc:"minimum interval between last_used writes"`
 	CacheTTL         Duration `json:"cache_ttl" doc:"token validation cache lifetime; revocation propagates within this window"`
+	MaxTTL           Duration `json:"max_ttl" doc:"maximum token lifetime; 0 unlimited"`
+	DefaultTTL       Duration `json:"default_ttl" doc:"expiry the web create form preselects; does not change API default of never"`
+	MaxPerUser       int      `json:"max_per_user" doc:"maximum tokens per user; 0 unlimited"`
+	AuditEnabled     bool     `json:"audit_enabled" doc:"write per-token audit events"`
+	AuditRetention   Duration `json:"audit_retention" doc:"audit event and usage retention; 0 keeps forever"`
 }
 
 // OIDCConfig configures JWT bearer validation.
@@ -326,8 +387,9 @@ func Defaults() Config {
 			Postgres: PostgresConfig{MaxConns: 16, MinConns: 2}},
 	}
 	c.Auth = AuthConfig{
-		Order:            []string{"token"},
-		Token:            TokenAuthConfig{Enabled: true, LastUsedInterval: Duration(60e9)},
+		Order: []string{"token"},
+		Token: TokenAuthConfig{Enabled: true, LastUsedInterval: Duration(60e9),
+			DefaultTTL: Duration(90 * 24 * 3600e9), MaxPerUser: 50, AuditEnabled: true, AuditRetention: Duration(90 * 24 * 3600e9)},
 		OIDC:             OIDCConfig{Algs: []string{"RS256", "ES256", "EdDSA"}, ClockSkew: Duration(60e9), JWKSCacheTTL: Duration(3600e9), JWKSMinRefresh: Duration(60e9)},
 		Anonymous:        AnonymousConfig{Scopes: []string{"read"}},
 		FailedAuthPerSec: 5,
@@ -365,5 +427,17 @@ func Defaults() Config {
 	c.Log = LogConfig{Level: "info", Format: "json", Access: true}
 	c.CORS = CORSConfig{Enabled: false, AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"}, MaxAge: Duration(600e9)}
 	c.Metrics = MetricsConfig{Enabled: true, Namespace: "saves"}
+	c.Web = WebConfig{
+		InstanceName: "saves", Homepage: true, PasswordLogin: true,
+		CookieSecure: "auto",
+		Session: WebSessionConfig{
+			Idle: Duration(2 * 3600e9), Absolute: Duration(24 * 3600e9),
+			PendingTTL: Duration(300e9), Max2FAAttempts: 5,
+		},
+		HSTS:            HSTSConfig{Enabled: true, MaxAge: Duration(365 * 24 * 3600e9)},
+		Require2FAAdmin: true,
+		LoginPerMin:     10,
+		OIDC:            WebOIDCConfig{Scopes: "openid profile email", Label: "Single sign-on"},
+	}
 	return c
 }

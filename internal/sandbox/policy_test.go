@@ -84,3 +84,24 @@ func FuzzPolicyFromConfig(f *testing.F) {
 		}
 	})
 }
+
+// TestPolicyWebOIDCPort covers the web OIDC issuer connect port.
+func TestPolicyWebOIDCPort(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Web.Enabled = true
+	cfg.Web.Secret = "0123456789abcdef0123456789abcdef"
+	cfg.Web.OIDC.Enabled = true
+	cfg.Web.OIDC.Issuer = "https://idp.example.com:8443"
+	cfg.Web.OIDC.ClientID = "saves"
+	cfg.Web.PublicURL = "https://saves.example.com"
+	p, err := FromConfig(&cfg, "/etc/saves/config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, port := range p.ConnectTCP {
+		if port == 8443 {
+			return
+		}
+	}
+	t.Fatalf("connect tcp %v lacks 8443", p.ConnectTCP)
+}

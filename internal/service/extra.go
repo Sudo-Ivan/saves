@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -200,10 +201,64 @@ type TokenFlow struct {
 }
 
 // CreateToken mints a token for a user (admin or self).
-func (s *Service) CreateToken(ctx context.Context, p auth.Principal, userID, name string, scopes []string, apps []string, expiresAt *time.Time) (TokenFlow, error) {
+func (s *Service) CreateToken(ctx context.Context, p auth.Principal, userID, name string, scopes []string, apps []string, expiresAt *time.Time, cidrs []string) (TokenFlow, error) {
 	var out TokenFlow
 	if p.User.ID != userID && p.Scopes&auth.ScopeAdmin == 0 {
 		return out, &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
+	}
+	name = strings.TrimSpace(name)
+	if len(name) > 128 {
+		return out, &api.Problem{Code: api.CodeBadRequest, Title: "token name too long", Status: 400}
+	}
+	// A token can never out-scope or out-range its creator.
+	req, err := auth.ParseScopes(strings.Join(scopes, ","))
+	if err != nil {
+		return out, &api.Problem{Code: api.CodeBadRequest, Title: "unknown scope", Status: 400}
+	}
+	if req == 0 {
+		return out, &api.Problem{Code: api.CodeBadRequest, Title: "at least one scope is required", Status: 400}
+	}
+	if expiresAt, err = s.ResolveExpiry(expiresAt, true); err != nil {
+		return out, err
+	}
+	if cidrs, err = NormalizeCIDRs(cidrs); err != nil {
+		return out, err
+	}
+	if req&^p.Scopes != 0 {
+		return out, &api.Problem{Code: api.CodeForbidden, Title: "scopes exceed the caller's own", Status: 403}
+	}
+	if len(p.Apps) > 0 {
+		if len(apps) == 0 {
+			apps = p.Apps
+		} else {
+			for _, a := range apps {
+				ok := false
+				for _, allowed := range p.Apps {
+					if a == allowed {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					return out, &api.Problem{Code: api.CodeForbidden, Title: "app outside the caller's allowlist", Status: 403}
+				}
+			}
+		}
+	}
+	if s.TokenMaxPerUser > 0 {
+		toks, err := s.Meta.ListTokens(ctx, userID)
+		if err != nil {
+			return out, mapErr(err)
+		}
+		active := 0
+		for _, t := range toks {
+			if t.RevokedAt == nil && (t.ExpiresAt == nil || t.ExpiresAt.After(s.now())) {
+				active++
+			}
+		}
+		if active >= s.TokenMaxPerUser {
+			return out, &api.Problem{Code: api.CodeConflict, Title: "token limit reached", Status: 409}
+		}
 	}
 	id, _, full, hash, err := auth.GenerateToken()
 	if err != nil {
@@ -212,10 +267,12 @@ func (s *Service) CreateToken(ctx context.Context, p auth.Principal, userID, nam
 	t := meta.Token{
 		ID: id, UserID: userID, SecretHash: hash, Name: name,
 		Scopes: scopes, Apps: apps, CreatedAt: s.now(), ExpiresAt: expiresAt,
+		AllowedCIDRs: cidrs,
 	}
 	if err := s.Meta.CreateToken(ctx, t); err != nil {
 		return out, mapErr(err)
 	}
+	s.emitAudit(ctx, t.ID, userID, "created", "", p.User.ID, "", "web|api|cli")
 	t.SecretHash = [32]byte{}
 	out = TokenFlow{Token: t, Full: full}
 	return out, nil
@@ -227,6 +284,9 @@ func (s *Service) ListTokens(ctx context.Context, p auth.Principal, userID strin
 		return nil, &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
 	}
 	out, err := s.Meta.ListTokens(ctx, userID)
+	for i := range out {
+		out[i].SecretHash = [32]byte{}
+	}
 	return out, mapErr(err)
 }
 
@@ -243,5 +303,207 @@ func (s *Service) RevokeToken(ctx context.Context, p auth.Principal, tokenID str
 	if err == nil && s.TokenInvalidator != nil {
 		s.TokenInvalidator(tokenID)
 	}
+	if err == nil {
+		s.emitAudit(ctx, tokenID, t.UserID, "revoked", "", p.User.ID, "", "")
+	}
 	return mapErr(err)
+}
+
+// UpdateToken edits name, expiry and CIDRs of a token.
+func (s *Service) UpdateToken(ctx context.Context, p auth.Principal, tokenID string, patch meta.TokenPatch) error {
+	t, err := s.Meta.GetToken(ctx, tokenID)
+	if err != nil {
+		return mapErr(err)
+	}
+	if t.UserID != p.User.ID && p.Scopes&auth.ScopeAdmin == 0 {
+		return &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
+	}
+	if t.RevokedAt != nil {
+		return &api.Problem{Code: api.CodeConflict, Title: "token is revoked", Status: 409}
+	}
+	var changed []string
+	if patch.Name != nil {
+		n := strings.TrimSpace(*patch.Name)
+		if len(n) > 128 {
+			return &api.Problem{Code: api.CodeBadRequest, Title: "token name too long", Status: 400}
+		}
+		patch.Name = &n
+		changed = append(changed, "name")
+	}
+	if patch.ExpiresAt != nil {
+		exp, err := s.ResolveExpiry(*patch.ExpiresAt, false)
+		if err != nil {
+			return err
+		}
+		patch.ExpiresAt = &exp
+		changed = append(changed, "expiry")
+	}
+	if patch.CIDRs != nil {
+		c, err := NormalizeCIDRs(*patch.CIDRs)
+		if err != nil {
+			return err
+		}
+		patch.CIDRs = &c
+		changed = append(changed, "cidrs")
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	if err := s.Meta.UpdateToken(ctx, tokenID, patch); err != nil {
+		return mapErr(err)
+	}
+	if s.TokenInvalidator != nil {
+		s.TokenInvalidator(tokenID)
+	}
+	kinds := map[string]string{"name": "renamed", "expiry": "expiry_changed", "cidrs": "cidr_changed"}
+	for _, c := range changed {
+		s.emitAudit(ctx, tokenID, t.UserID, kinds[c], "", p.User.ID, "", c)
+	}
+	return nil
+}
+
+// MaxTokenLifetime bounds any expiry, even with max_ttl unset.
+const MaxTokenLifetime = 10 * 365 * 24 * time.Hour
+
+// ResolveExpiry validates a requested expiry. A nil request means no
+// expiry, which max_ttl turns into now+max_ttl when creating and
+// rejects when editing.
+func (s *Service) ResolveExpiry(exp *time.Time, creating bool) (*time.Time, error) {
+	return ResolveTokenExpiry(s.now(), s.TokenMaxTTL, exp, creating)
+}
+
+// ResolveTokenExpiry is ResolveExpiry with explicit inputs for callers
+// that hold no Service, such as the admin CLI.
+func ResolveTokenExpiry(now time.Time, maxTTL time.Duration, exp *time.Time, creating bool) (*time.Time, error) {
+	if exp == nil {
+		if maxTTL > 0 {
+			if !creating {
+				return nil, &api.Problem{Code: api.CodeBadRequest, Title: "an expiry is required by max_ttl", Status: 400}
+			}
+			t := now.Add(maxTTL)
+			return &t, nil
+		}
+		return nil, nil
+	}
+	t := exp.UTC()
+	if !t.After(now) {
+		return nil, &api.Problem{Code: api.CodeBadRequest, Title: "expiry must be in the future", Status: 400}
+	}
+	if t.After(now.Add(MaxTokenLifetime)) {
+		return nil, &api.Problem{Code: api.CodeBadRequest, Title: "expiry is too far in the future", Status: 400}
+	}
+	if maxTTL > 0 && t.After(now.Add(maxTTL)) {
+		return nil, &api.Problem{Code: api.CodeBadRequest, Title: "expiry beyond max_ttl", Status: 400}
+	}
+	return &t, nil
+}
+
+// ParseTTL parses a lifetime such as 720h, 30d or 90m.
+func ParseTTL(v string) (time.Duration, error) {
+	v = strings.TrimSpace(v)
+	if strings.HasSuffix(v, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(v, "d"))
+		if err != nil || n <= 0 || n > 3660 {
+			return 0, &api.Problem{Code: api.CodeBadRequest, Title: "invalid expires_in", Status: 400}
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < time.Minute || d > MaxTokenLifetime {
+		return 0, &api.Problem{Code: api.CodeBadRequest, Title: "invalid expires_in", Status: 400}
+	}
+	return d, nil
+}
+
+// NormalizeCIDRs validates and canonicalizes an allowlist.
+func NormalizeCIDRs(in []string) ([]string, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out, err := auth.ValidateCIDRs(strings.Join(in, "\n"))
+	if err != nil {
+		return nil, &api.Problem{Code: api.CodeBadRequest, Title: "invalid allowed_cidrs", Detail: err.Error(), Status: 400}
+	}
+	return out, nil
+}
+
+// TokenEvents lists audit rows for one token (owner or admin).
+func (s *Service) TokenEvents(ctx context.Context, p auth.Principal, tokenID, kind, cursor string, limit int) ([]meta.TokenEvent, string, error) {
+	t, err := s.Meta.GetToken(ctx, tokenID)
+	if err != nil {
+		return nil, "", mapErr(err)
+	}
+	if t.UserID != p.User.ID && p.Scopes&auth.ScopeAdmin == 0 {
+		return nil, "", &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
+	}
+	return s.Meta.ListTokenEvents(ctx, tokenID, kind, cursor, limit)
+}
+
+// TokenStats returns aggregated stats (owner or admin).
+func (s *Service) TokenStats(ctx context.Context, p auth.Principal, tokenID string) (meta.TokenStats, error) {
+	var st meta.TokenStats
+	t, err := s.Meta.GetToken(ctx, tokenID)
+	if err != nil {
+		return st, mapErr(err)
+	}
+	if t.UserID != p.User.ID && p.Scopes&auth.ScopeAdmin == 0 {
+		return st, &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
+	}
+	return s.Meta.TokenStats(ctx, tokenID)
+}
+
+// GetToken returns one token to owner or admin.
+func (s *Service) GetToken(ctx context.Context, p auth.Principal, tokenID string) (meta.Token, error) {
+	var t meta.Token
+	t, err := s.Meta.GetToken(ctx, tokenID)
+	if err != nil {
+		return t, mapErr(err)
+	}
+	if t.UserID != p.User.ID && p.Scopes&auth.ScopeAdmin == 0 {
+		return t, &api.Problem{Code: api.CodeForbidden, Title: "forbidden", Status: 403}
+	}
+	t.SecretHash = [32]byte{}
+	return t, nil
+}
+
+type clientKey struct{}
+
+type clientInfo struct{ IP, UA string }
+
+// WithClient attaches the caller's address and user agent so audit
+// events written during the request can record them.
+func WithClient(ctx context.Context, ip, ua string) context.Context {
+	return context.WithValue(ctx, clientKey{}, clientInfo{ip, ua})
+}
+
+// emitAudit writes a management audit event when auditing is on.
+func (s *Service) emitAudit(ctx context.Context, tokenID, userID, kind, ip, actor, ua, detail string) {
+	if !s.AuditEnabled {
+		return
+	}
+	if ci, ok := ctx.Value(clientKey{}).(clientInfo); ok {
+		if ip == "" {
+			ip = ci.IP
+		}
+		if ua == "" {
+			ua = ci.UA
+		}
+	}
+	if len(ua) > 200 {
+		ua = ua[:200]
+	}
+	ua = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, ua)
+	id, err := meta.NewID(s.now())
+	if err != nil {
+		return
+	}
+	_ = s.Meta.InsertTokenEvent(ctx, meta.TokenEvent{
+		ID: id, TokenID: tokenID, UserID: userID, At: s.now(), Kind: kind,
+		IP: ip, ActorID: actor, UserAgent: ua, Detail: detail,
+	})
 }

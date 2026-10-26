@@ -1,0 +1,11 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">{{.Data.Heading}}</h1>
+  <p class="notice notice--warn" role="alert">{{.Data.Warning}}</p>
+  <form class="form" method="post" action="{{.Data.URL}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="button button--danger" type="submit">Confirm</button>
+    <a class="button button--secondary" href="{{.Data.Back}}">Cancel</a>
+  </form>
+</section>
+{{end}}

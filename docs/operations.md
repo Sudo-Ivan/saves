@@ -10,7 +10,12 @@ prints it once. Store it in a secrets file; it grants the admin scope.
 `savesd admin` manages users and tokens against the metadata store:
 
 - `savesd admin user list|show|patch|delete`
-- `savesd admin token create|list|revoke`
+- `savesd admin token create [-name N] [-scopes a,b] [-app a,b] [-expires 30d|720h|RFC3339|none] [-cidr 10.0.0.0/8,1.2.3.4]`
+- `savesd admin token list <subject>`
+- `savesd admin token show <id>` prints token fields and usage stats
+- `savesd admin token events <id> [-kind K] [-n 50]` lists audit events
+- `savesd admin token set <id> [-name N] [-expires V|none] [-cidr L|none]`
+- `savesd admin token revoke <id>`
 - `savesd admin backup-meta` writes a consistent copy of the sqlite
   metadata database to a path.
 - `savesd admin stats` prints usage totals.

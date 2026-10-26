@@ -1,0 +1,18 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">Admin</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  <dl class="detail-list">
+    <dt class="detail-list__key">Users</dt><dd class="detail-list__val">{{.Data.Users}}</dd>
+    <dt class="detail-list__key">Version</dt><dd class="detail-list__val">{{.Data.Version}}</dd>
+  </dl>
+  <p><a class="button" href="{{.Base}}admin/users">Manage users</a></p>
+</section>
+<section class="panel">
+  <h2 class="panel__title">Maintenance</h2>
+  <form class="form form--inline" method="post" action="{{.Base}}admin/gc">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="button" type="submit">Run garbage collection</button>
+  </form>
+</section>
+{{end}}

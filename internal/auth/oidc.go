@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -33,49 +32,58 @@ type OIDCConfig struct {
 	HTTPClient    *http.Client
 }
 
-// OIDCAuthenticator validates issuer JWTs with discovery JWKS.
-type OIDCAuthenticator struct {
-	cfg   OIDCConfig
-	m     meta.Store
-	hc    *http.Client
-	clock func() time.Time
-
-	mu         sync.Mutex
-	jwks       *jose.JSONWebKeySet
-	jwksURL    string
-	fetchedAt  time.Time
-	minRefresh time.Duration
+// OIDCDiscovery is the subset of the discovery document we consume.
+type OIDCDiscovery struct {
+	Issuer        string `json:"issuer"`
+	Authorization string `json:"authorization_endpoint"`
+	Token         string `json:"token_endpoint"`
+	JWKSURI       string `json:"jwks_uri"`
 }
 
-// NewOIDC builds the authenticator, fetching discovery lazily.
-func NewOIDC(m meta.Store, cfg OIDCConfig) (*OIDCAuthenticator, error) {
-	if cfg.Issuer == "" {
+// OIDCProvider wraps discovery and JWKS fetching so the bearer
+// authenticator and the web login flow share one implementation.
+type OIDCProvider struct {
+	Issuer     string
+	Algs       []string
+	HTTPClient *http.Client
+	clock      func() time.Time
+	minRefresh time.Duration
+
+	mu        sync.Mutex
+	doc       *OIDCDiscovery
+	jwks      *jose.JSONWebKeySet
+	fetchedAt time.Time
+}
+
+// NewOIDCProvider builds a provider; discovery is lazy.
+func NewOIDCProvider(issuer string, algs []string, hc *http.Client) (*OIDCProvider, error) {
+	if issuer == "" {
 		return nil, errors.New("auth: oidc issuer required")
 	}
-	a := &OIDCAuthenticator{cfg: cfg, m: m, clock: time.Now, minRefresh: 60 * time.Second}
-	a.hc = cfg.HTTPClient
-	if a.hc == nil {
-		a.hc = &http.Client{Transport: netx.NewTransport(), Timeout: 10 * time.Second}
+	if hc == nil {
+		hc = &http.Client{Transport: netx.NewTransport(), Timeout: 10 * time.Second}
 	}
-	for _, alg := range cfg.Algs {
+	p := &OIDCProvider{Issuer: issuer, Algs: algs, HTTPClient: hc,
+		clock: time.Now, minRefresh: 60 * time.Second}
+	for _, alg := range algs {
 		switch jose.SignatureAlgorithm(alg) {
 		case jose.RS256, jose.RS384, jose.ES256, jose.EdDSA:
 		default:
 			return nil, fmt.Errorf("auth: oidc alg %q not allowed", alg)
 		}
 	}
-	return a, nil
+	return p, nil
 }
 
 // SetClock injects a clock for tests.
-func (a *OIDCAuthenticator) SetClock(c func() time.Time) { a.clock = c }
+func (p *OIDCProvider) SetClock(c func() time.Time) { p.clock = c }
 
-func (a *OIDCAuthenticator) getJSON(ctx context.Context, u string, max int64, v any) error {
+func (p *OIDCProvider) getJSON(ctx context.Context, u string, max int64, v any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := a.hc.Do(req)
+	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -86,55 +94,153 @@ func (a *OIDCAuthenticator) getJSON(ctx context.Context, u string, max int64, v 
 	return json.NewDecoder(http.MaxBytesReader(nil, resp.Body, max)).Decode(v)
 }
 
-func (a *OIDCAuthenticator) discover(ctx context.Context) error {
-	u := strings.TrimSuffix(a.cfg.Issuer, "/") + "/.well-known/openid-configuration"
-	var doc struct {
-		JWKSURI string `json:"jwks_uri"`
+// Discover returns the cached discovery document. The doc issuer must
+// equal the configured issuer.
+func (p *OIDCProvider) Discover(ctx context.Context) (*OIDCDiscovery, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.discover(ctx)
+}
+
+// discover is the unlocked worker; callers hold p.mu.
+func (p *OIDCProvider) discover(ctx context.Context) (*OIDCDiscovery, error) {
+	if p.doc != nil {
+		return p.doc, nil
 	}
-	if err := a.getJSON(ctx, u, 1<<20, &doc); err != nil {
-		return err
+	u := strings.TrimSuffix(p.Issuer, "/") + "/.well-known/openid-configuration"
+	var doc OIDCDiscovery
+	if err := p.getJSON(ctx, u, 1<<20, &doc); err != nil {
+		return nil, err
+	}
+	if doc.Issuer != strings.TrimSuffix(p.Issuer, "/") && doc.Issuer != p.Issuer {
+		return nil, errors.New("auth: oidc discovery issuer mismatch")
 	}
 	if doc.JWKSURI == "" {
-		return errors.New("auth: oidc discovery missing jwks_uri")
+		return nil, errors.New("auth: oidc discovery missing jwks_uri")
 	}
-	if _, err := url.Parse(doc.JWKSURI); err != nil {
-		return fmt.Errorf("auth: bad jwks_uri: %w", err)
-	}
-	a.jwksURL = doc.JWKSURI
-	return a.refreshJWKS(ctx)
+	p.doc = &doc
+	return &doc, nil
 }
 
-func (a *OIDCAuthenticator) refreshJWKS(ctx context.Context) error {
-	var ks jose.JSONWebKeySet
-	if err := a.getJSON(ctx, a.jwksURL, 4<<20, &ks); err != nil {
-		return err
-	}
-	a.jwks = &ks
-	a.fetchedAt = a.clock()
-	return nil
-}
-
-// keys returns the cached set, refreshing when kid is unknown.
-func (a *OIDCAuthenticator) keys(ctx context.Context, kid string) (*jose.JSONWebKeySet, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.jwks == nil {
-		if err := a.discover(ctx); err != nil {
+// Keys returns the cached key set, refreshing when kid is unknown.
+func (p *OIDCProvider) Keys(ctx context.Context, kid string) (*jose.JSONWebKeySet, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.doc == nil {
+		if _, err := p.discover(ctx); err != nil {
 			return nil, err
 		}
 	}
-	for _, k := range a.jwks.Keys {
-		if k.KeyID == kid || kid == "" {
-			return a.jwks, nil
+	if p.jwks == nil {
+		if err := p.refreshJWKS(ctx); err != nil {
+			return nil, err
 		}
 	}
-	if a.clock().Sub(a.fetchedAt) < a.minRefresh {
+	for _, k := range p.jwks.Keys {
+		if k.KeyID == kid || kid == "" {
+			return p.jwks, nil
+		}
+	}
+	if p.clock().Sub(p.fetchedAt) < p.minRefresh {
 		return nil, errors.New("auth: unknown key id")
 	}
-	if err := a.refreshJWKS(ctx); err != nil {
+	if err := p.refreshJWKS(ctx); err != nil {
 		return nil, err
 	}
-	return a.jwks, nil
+	return p.jwks, nil
+}
+
+func (p *OIDCProvider) refreshJWKS(ctx context.Context) error {
+	var ks jose.JSONWebKeySet
+	if err := p.getJSON(ctx, p.doc.JWKSURI, 4<<20, &ks); err != nil {
+		return err
+	}
+	p.jwks = &ks
+	p.fetchedAt = p.clock()
+	return nil
+}
+
+// VerifyIDToken validates signature, issuer, audience, expiry, and
+// nonce of a raw id_token.
+func (p *OIDCProvider) VerifyIDToken(ctx context.Context, raw, clientID, nonce string, skew time.Duration) (jwt.Claims, map[string]any, error) {
+	var claims jwt.Claims
+	var all map[string]any
+	tok, err := jwt.ParseSigned(raw, algs(p.Algs))
+	if err != nil {
+		return claims, nil, ErrUnauthorized
+	}
+	var hdr jose.Header
+	if len(tok.Headers) > 0 {
+		hdr = tok.Headers[0]
+	}
+	ks, err := p.Keys(ctx, hdr.KeyID)
+	if err != nil {
+		return claims, nil, err
+	}
+	verified := false
+	for _, k := range ks.Keys {
+		if hdr.KeyID != "" && k.KeyID != hdr.KeyID {
+			continue
+		}
+		if err := tok.Claims(k, &claims, &all); err == nil {
+			verified = true
+			break
+		}
+	}
+	if !verified {
+		return claims, nil, ErrUnauthorized
+	}
+	exp := jwt.Expected{
+		Issuer:      p.Issuer,
+		AnyAudience: jwt.Audience{clientID},
+		Time:        p.clock(),
+	}
+	if err := claims.ValidateWithLeeway(exp, skew); err != nil {
+		return claims, nil, ErrUnauthorized
+	}
+	if len(claims.Audience) > 1 {
+		if azp, _ := all["azp"].(string); azp != clientID {
+			return claims, nil, ErrUnauthorized
+		}
+	}
+	if claims.Subject == "" {
+		return claims, nil, ErrUnauthorized
+	}
+	if n, _ := all["nonce"].(string); n != nonce {
+		return claims, nil, ErrUnauthorized
+	}
+	return claims, all, nil
+}
+
+// OIDCAuthenticator validates issuer JWTs with discovery JWKS.
+type OIDCAuthenticator struct {
+	cfg   OIDCConfig
+	m     meta.Store
+	hc    *http.Client
+	clock func() time.Time
+	prov  *OIDCProvider
+}
+
+// NewOIDC builds the authenticator, fetching discovery lazily.
+func NewOIDC(m meta.Store, cfg OIDCConfig) (*OIDCAuthenticator, error) {
+	if cfg.Issuer == "" {
+		return nil, errors.New("auth: oidc issuer required")
+	}
+	prov, err := NewOIDCProvider(cfg.Issuer, cfg.Algs, cfg.HTTPClient)
+	if err != nil {
+		return nil, err
+	}
+	a := &OIDCAuthenticator{cfg: cfg, m: m, clock: time.Now, hc: cfg.HTTPClient, prov: prov}
+	if a.hc == nil {
+		a.hc = prov.HTTPClient
+	}
+	return a, nil
+}
+
+// SetClock injects a clock for tests.
+func (a *OIDCAuthenticator) SetClock(c func() time.Time) {
+	a.clock = c
+	a.prov.SetClock(c)
 }
 
 // Authenticate implements Authenticator.
@@ -151,7 +257,7 @@ func (a *OIDCAuthenticator) Authenticate(ctx context.Context, r *http.Request) (
 	if len(tok.Headers) > 0 {
 		hdr = tok.Headers[0]
 	}
-	ks, err := a.keys(ctx, hdr.KeyID)
+	ks, err := a.prov.Keys(ctx, hdr.KeyID)
 	if err != nil {
 		return Principal{}, ErrUnauthorized
 	}

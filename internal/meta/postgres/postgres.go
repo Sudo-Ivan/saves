@@ -332,17 +332,17 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 }
 
 // #nosec G101 -- column stores a hash, not a credential
-const tokenCols = `id, user_id, secret_hash, name, scopes, apps, created_at, expires_at, revoked_at, last_used_at`
+const tokenCols = `id, user_id, secret_hash, name, scopes, apps, created_at, expires_at, revoked_at, last_used_at, allowed_cidrs`
 
 func scanTokenRows(rows pgx.Rows) ([]meta.Token, error) {
 	var out []meta.Token
 	for rows.Next() {
 		var t meta.Token
 		var exp, rev, last *int64
-		var scopes, apps string
+		var scopes, apps, cidr string
 		var created int64
 		var sh []byte
-		if err := rows.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last); err != nil {
+		if err := rows.Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last, &cidr); err != nil {
 			return nil, err
 		}
 		copy(t.SecretHash[:], sh)
@@ -352,6 +352,7 @@ func scanTokenRows(rows pgx.Rows) ([]meta.Token, error) {
 		t.ExpiresAt = tm(exp)
 		t.RevokedAt = tm(rev)
 		t.LastUsedAt = tm(last)
+		t.AllowedCIDRs = splitCSV(cidr)
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -363,7 +364,7 @@ func (s *Store) CreateToken(ctx context.Context, t meta.Token) error {
 		created = s.now()
 	}
 	return s.wtx(ctx, func(q qtx) error {
-		_, err := q.Exec(ctx, `INSERT INTO tokens(`+tokenCols+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		_, err := q.Exec(ctx, `INSERT INTO tokens(`+tokenCols+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 			t.ID, t.UserID, t.SecretHash[:], t.Name, strings.Join(t.Scopes, ","), strings.Join(t.Apps, ","),
 			ns(created), nsPtr(t.ExpiresAt), nsPtr(t.RevokedAt), nsPtr(t.LastUsedAt))
 		return err
@@ -373,11 +374,11 @@ func (s *Store) CreateToken(ctx context.Context, t meta.Token) error {
 func (s *Store) GetToken(ctx context.Context, id string) (meta.Token, error) {
 	var t meta.Token
 	var exp, rev, last *int64
-	var scopes, apps string
+	var scopes, apps, cidr string
 	var created int64
 	var sh []byte
 	err := s.pool.QueryRow(ctx, `SELECT `+tokenCols+` FROM tokens WHERE id=$1`, id).
-		Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last)
+		Scan(&t.ID, &t.UserID, &sh, &t.Name, &scopes, &apps, &created, &exp, &rev, &last, &cidr)
 	copy(t.SecretHash[:], sh)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return t, meta.ErrNotFound

@@ -186,9 +186,19 @@ type TokenAuthenticator struct {
 	CacheTTL time.Duration
 	// FailLimiter is a per-IP failed-auth token bucket.
 	FailLimiter *ratelimit.Limiter
+	// TrustedProxies are CIDRs whose X-Forwarded-For and real-IP
+	// headers are honored; RealIPHeader names that header (empty off).
+	TrustedProxies []netip.Prefix
+	RealIPHeader   string
+	// RecordEvent, when set, writes one audit event per call. The
+	// aggregator feeds it denied_ip and (via flush) first_use/new_ip.
+	RecordEvent func(e meta.TokenEvent)
+	// RecordUsage, when set, feeds the usage aggregator per request.
+	RecordUsage func(tokenID string, r *http.Request, at time.Time)
 
-	mu    sync.Mutex
-	cache map[string]cacheEntry
+	mu        sync.Mutex
+	cache     map[string]cacheEntry
+	deniedLog map[string]time.Time // "token|ip" -> last denied event
 }
 
 // cacheEntry is one cached token validation.
@@ -197,6 +207,7 @@ type cacheEntry struct {
 	user    meta.User
 	scopes  Scope
 	apps    []string
+	cidrs   []netip.Prefix
 	expires time.Time
 }
 
@@ -251,7 +262,8 @@ func (a *TokenAuthenticator) Authenticate(ctx context.Context, r *http.Request) 
 	if !ok {
 		return Principal{}, ErrNoCredentials
 	}
-	ip := netx.IPPrefix(netx.ClientIP(r, nil))
+	clientAddr := netx.ClientIPReal(r, a.TrustedProxies, a.RealIPHeader)
+	ip := netx.IPPrefix(clientAddr)
 	fail := func(err error) (Principal, error) {
 		if a.FailLimiter != nil {
 			if ok, _ := a.FailLimiter.Allow(ip, 1); !ok {
@@ -270,6 +282,11 @@ func (a *TokenAuthenticator) Authenticate(ctx context.Context, r *http.Request) 
 		if !hmac.Equal(got[:], ce.hash[:]) {
 			return fail(ErrUnauthorized)
 		}
+		if !cidrAllows(ce.cidrs, clientAddr) {
+			a.recordDenied(id, ce.user.ID, "denied_ip", r, clientAddr)
+			return fail(ErrUnauthorized)
+		}
+		a.recordUsage(id, r, now)
 		return Principal{User: ce.user, Scopes: ce.scopes, Apps: ce.apps, TokenID: id,
 			Admin: ce.scopes&ScopeAdmin != 0}, nil
 	}
@@ -283,9 +300,16 @@ func (a *TokenAuthenticator) Authenticate(ctx context.Context, r *http.Request) 
 		return fail(ErrUnauthorized)
 	}
 	if t.RevokedAt != nil {
+		a.recordDenied(id, t.UserID, "denied_revoked", r, clientAddr)
 		return fail(ErrUnauthorized)
 	}
 	if t.ExpiresAt != nil && t.ExpiresAt.Before(now) {
+		a.recordDenied(id, t.UserID, "denied_expired", r, clientAddr)
+		return fail(ErrUnauthorized)
+	}
+	cidrs, err := ParseCIDRs(t.AllowedCIDRs)
+	if err != nil || !cidrAllows(cidrs, clientAddr) {
+		a.recordDenied(id, t.UserID, "denied_ip", r, clientAddr)
 		return fail(ErrUnauthorized)
 	}
 	u, err := a.Meta.GetUser(ctx, t.UserID)
@@ -306,8 +330,9 @@ func (a *TokenAuthenticator) Authenticate(ctx context.Context, r *http.Request) 
 	if ttl <= 0 {
 		ttl = 10 * time.Second
 	}
+	a.recordUsage(id, r, now)
 	a.storeCache(id, cacheEntry{hash: t.SecretHash, user: u, scopes: sc, apps: t.Apps,
-		expires: now.Add(ttl)})
+		cidrs: cidrs, expires: now.Add(ttl)})
 	return p, nil
 }
 
@@ -385,4 +410,149 @@ func (a *AnonymousAuthenticator) Authenticate(ctx context.Context, r *http.Reque
 		return Principal{}, ErrUnauthorized
 	}
 	return Principal{User: u, Scopes: a.Scopes, Anonymous: true}, nil
+}
+
+// cidrAllows is true when the list is empty or holds the address.
+func cidrAllows(cidrs []netip.Prefix, a netip.Addr) bool {
+	if len(cidrs) == 0 {
+		return true
+	}
+	for _, p := range cidrs {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// recordDenied writes a denied_* event at most once per token+ip
+// per minute so a hostile client cannot flood the audit log.
+func (a *TokenAuthenticator) recordDenied(id, userID, kind string, r *http.Request, addr netip.Addr) {
+	if a.RecordEvent == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.deniedLog == nil {
+		a.deniedLog = map[string]time.Time{}
+	}
+	key := id + "|" + addr.String()
+	if last, ok := a.deniedLog[key]; ok && a.now().Sub(last) < time.Minute {
+		a.mu.Unlock()
+		return
+	}
+	a.deniedLog[key] = a.now()
+	if len(a.deniedLog) > 4096 {
+		cut := a.now().Add(-time.Minute)
+		for k, t := range a.deniedLog {
+			if t.Before(cut) {
+				delete(a.deniedLog, k)
+			}
+		}
+		if len(a.deniedLog) > 4096 {
+			a.deniedLog = map[string]time.Time{key: a.now()}
+		}
+	}
+	a.mu.Unlock()
+	a.RecordEvent(meta.TokenEvent{
+		ID: id2(meta.NewID(a.now())), TokenID: id, UserID: userID, At: a.now(), Kind: kind,
+		IP: addr.String(), UserAgent: cleanUA(r.UserAgent()),
+		RequestID: "", Detail: r.Pattern,
+	})
+}
+
+func (a *TokenAuthenticator) recordUsage(id string, r *http.Request, at time.Time) {
+	if a.RecordUsage != nil {
+		a.RecordUsage(id, r, at)
+	}
+}
+
+// ParseCIDRs normalizes a stored allowlist.
+func ParseCIDRs(in []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, s := range in {
+		p, err := normalizeCIDR(s)
+		if err != nil {
+			return nil, err
+		}
+		if p != (netip.Prefix{}) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// ValidateCIDRs parses free-form input (newline or comma separated,
+// address or CIDR) into a normalized, deduped, sorted list.
+func ValidateCIDRs(in string) ([]string, error) {
+	var out []netip.Prefix
+	seen := map[string]bool{}
+	for _, line := range strings.FieldsFunc(in, func(c rune) bool { return c == '\n' || c == ',' }) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > 64 {
+			return nil, fmt.Errorf("address entry %q is too long", line)
+		}
+		if len(out) >= 16 {
+			return nil, fmt.Errorf("at most 16 allowed addresses")
+		}
+		p, err := normalizeCIDR(line)
+		if err != nil {
+			return nil, fmt.Errorf("address %q: %v", line, err)
+		}
+		if p.Bits() == 0 {
+			return nil, fmt.Errorf("use a specific address or CIDR; %q matches everything", line)
+		}
+		if !seen[p.String()] {
+			seen[p.String()] = true
+			out = append(out, p)
+		}
+	}
+	strs := make([]string, len(out))
+	for i, p := range out {
+		strs[i] = p.String()
+	}
+	return strs, nil
+}
+
+func normalizeCIDR(s string) (netip.Prefix, error) {
+	if a, err := netip.ParseAddr(s); err == nil {
+		a = a.Unmap()
+		return netip.PrefixFrom(a, a.BitLen()), nil
+	}
+	p, err := netip.ParsePrefix(s)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("invalid address or CIDR")
+	}
+	if p.Addr().Is4In6() {
+		// A v4-mapped v6 prefix maps to v4 by subtracting 96 bits.
+		if p.Bits() < 96 {
+			return netip.Prefix{}, fmt.Errorf("invalid address or CIDR")
+		}
+		return netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96).Masked(), nil
+	}
+	return p.Masked(), nil
+}
+
+func id2(id string, err error) string {
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
+// cleanUA strips control chars and caps a user agent for audit rows.
+func cleanUA(s string) string {
+	var b strings.Builder
+	for _, c := range s {
+		if c >= 32 && c != 127 {
+			b.WriteRune(c)
+		}
+	}
+	out := b.String()
+	if len(out) > 200 {
+		out = out[:200]
+	}
+	return out
 }

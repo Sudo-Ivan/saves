@@ -1,0 +1,10 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">Recovery codes</h1>
+  <p class="notice notice--info" role="status">Store these codes somewhere safe. Each can be used once. They are shown only now.</p>
+  <ul class="code-list">
+  {{range .Data.Codes}}<li class="code-list__item"><code>{{.}}</code></li>{{end}}
+  </ul>
+  <p><a class="button" href="{{.Base}}account/security">Back to security</a></p>
+</section>
+{{end}}

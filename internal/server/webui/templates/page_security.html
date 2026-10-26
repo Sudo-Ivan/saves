@@ -1,0 +1,98 @@
+{{define "main"}}
+<section class="panel">
+  <h1 class="panel__title">Security</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  {{if .Data.MustChange}}<p class="notice notice--warn" role="alert">You must set a new password before continuing.</p>{{end}}
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">Change password</h2>
+  <form class="form" method="post" action="{{.Base}}account/security/password">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="field">
+      <label class="field__label" for="current">Current password</label>
+      <input class="field__input" id="current" name="current" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label class="field__label" for="new">New password</label>
+      <input class="field__input" id="new" name="new" type="password" autocomplete="new-password" required>
+      <p class="field__hint">At least 12 characters.</p>
+    </div>
+    <div class="field">
+      <label class="field__label" for="new2">Confirm new password</label>
+      <input class="field__input" id="new2" name="new2" type="password" autocomplete="new-password" required>
+    </div>
+    <button class="button" type="submit">Change password</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">Two-factor authentication</h2>
+  {{if .Data.TOTPEnabled}}
+    <p>TOTP is enabled.</p>
+    <form class="form form--inline" method="post" action="{{.Base}}account/security/2fa/disable">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <div class="field">
+        <label class="field__label" for="disablepw">Current password</label>
+        <input class="field__input" id="disablepw" name="current" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="button button--danger" type="submit">Disable TOTP</button>
+    </form>
+  {{else}}
+    {{if .Data.CanTOTP}}
+    <p>TOTP is not enabled.</p>
+    <a class="button" href="{{.Base}}account/security/2fa">Set up TOTP</a>
+    {{else}}
+    <p>Two-factor authentication is managed by your sign-in provider.</p>
+    {{end}}
+  {{end}}
+</section>
+
+{{if .Data.CanTOTP}}
+<section class="panel">
+  <h2 class="panel__title">Recovery codes</h2>
+  <form class="form form--inline" method="post" action="{{.Base}}account/security/recovery">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="field">
+      <label class="field__label" for="recpw">Current password</label>
+      <input class="field__input" id="recpw" name="current" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="button" type="submit">Regenerate recovery codes</button>
+  </form>
+  <p class="field__hint">Regenerating invalidates the old set.</p>
+</section>
+{{end}}
+
+<section class="panel">
+  <h2 class="panel__title">Sessions</h2>
+  <table class="table">
+    <thead><tr>
+      <th class="table__head">Created</th><th class="table__head">Last seen</th><th class="table__head">Expires</th>
+      <th class="table__head">IP</th><th class="table__head">User agent</th><th class="table__head"></th>
+    </tr></thead>
+    <tbody>
+    {{range .Data.Sessions}}
+      <tr class="table__row{{if .Current}} table__row--current{{end}}">
+        <td class="table__cell">{{fdate .CreatedAt}}</td>
+        <td class="table__cell">{{fdate .LastSeenAt}}</td>
+        <td class="table__cell">{{fdate .ExpiresAt}}</td>
+        <td class="table__cell">{{.IP}}</td>
+        <td class="table__cell">{{.UserAgent}}</td>
+        <td class="table__cell">
+          {{if .Current}}This session{{else}}
+          <form class="form form--inline" method="post" action="{{$.Base}}account/security/sessions/{{.Key}}/revoke">
+            <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+            <button class="button button--small" type="submit">Revoke</button>
+          </form>{{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <form class="form form--inline" method="post" action="{{.Base}}account/security/sessions/revoke-others">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="button" type="submit">Sign out other sessions</button>
+  </form>
+</section>
+{{end}}

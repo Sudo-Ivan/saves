@@ -31,9 +31,14 @@ func TestDocsRoutes(t *testing.T) {
 			t.Fatalf("missing tag %s", tag)
 		}
 	}
-	// no inline style or script
-	if strings.Contains(body, "style=") || strings.Contains(body, "<script") {
-		t.Fatal("inline style or script")
+	// no inline style attributes or inline script
+	if strings.Contains(body, " style=") || strings.Contains(body, "style>") {
+		t.Fatal("inline style")
+	}
+	for i, m := range strings.Split(body, "<script") {
+		if i > 0 && !strings.Contains(m[:strings.Index(m, ">")+1], "src=") {
+			t.Fatal("inline script")
+		}
 	}
 	// raw spec
 	r2, body2 := f.get(t, "/openapi.yaml")

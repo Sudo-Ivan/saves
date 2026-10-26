@@ -301,12 +301,7 @@ func (s *Server) whDocs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wv := &webReq{s: s, w: w, r: r, web: s.web}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = wv
-	t := s.docTmpl()
-	w.WriteHeader(200)
-	_ = t.Execute(w, parsedSpec)
+	wv.render("docs", 200, parsedSpec)
 }
 
 // whSpec serves the raw spec document.
@@ -323,14 +318,6 @@ func (s *Server) whSpec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.Header().Set("ETag", specETag)
 	_, _ = w.Write(apispec.Spec())
-}
-
-func (s *Server) docTmpl() *template.Template {
-	return template.Must(template.New("docs").Funcs(template.FuncMap{
-		"md":    docMarkdown,
-		"lower": strings.ToLower,
-		"tagid": func(s string) string { return strings.ReplaceAll(strings.ToLower(s), " ", "-") },
-	}).Parse(docTmplSrc))
 }
 
 // docMarkdown renders markdown-ish text to escaped HTML (paragraphs,
@@ -395,41 +382,3 @@ func inlineMD(s string) string {
 	return out.String()
 }
 
-var docTmplSrc = `<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>API reference - {{.Title}}</title>
-<link rel="stylesheet" href="static/tokens.css">
-<link rel="stylesheet" href="static/base.css">
-<link rel="stylesheet" href="static/app.css">
-</head><body class="page">
-<main id="main" class="docs">
-<header class="docs__head">
-<h1>{{.Title}} <span class="docs__ver">{{.Version}}</span></h1>
-<p class="docs__server">Server: <code>{{.Server}}</code> · OpenAPI 3.1 · <a href="openapi.yaml">Download spec</a></p>
-</header>
-<details class="docs__toc docs__toc--mobile"><summary>Contents</summary>{{template "toc" .}}</details>
-<aside class="docs__toc">{{template "toc" .}}</aside>
-<section class="docs__body">
-{{if .Desc}}<section class="docs__sec"><h2>Getting started</h2>{{md .Desc}}</section>{{end}}
-<section class="docs__sec"><h2>Authentication</h2><p>Every request sends an sv1_ bearer token in the Authorization header. Tokens are minted with POST /v1/tokens or by an admin. Errors are RFC 9457 problems with a stable code field; 429 responses carry Retry-After.</p></section>
-{{range .Tags}}<section class="docs__tag" id="tag-{{tagid .Name}}"><h2>{{.Name}}</h2>
-{{range .Ops}}<article class="docs__op" id="op-{{.ID}}">
-<header class="docs__ophead"><span class="method method--{{lower .Method}}">{{.Method}}</span> <code class="docs__path">{{.Path}}</code></header>
-<p class="docs__sum">{{.Summary}}</p>
-{{if .Desc}}<div class="docs__desc">{{md .Desc}}</div>{{end}}
-{{if .Params}}<table class="table"><thead><tr><th>Parameter</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-{{range .Params}}<tr><td><code>{{.Name}}</code></td><td>{{.In}}</td><td>{{.Type}}</td><td>{{.Required}}</td><td>{{.Desc}}</td></tr>{{end}}
-</tbody></table>{{end}}
-{{if .ReqBody}}<h3>Request body <code>{{.ReqBody.Type}}</code></h3>
-{{if .ReqBody.Schema}}<pre class="docs__pre"><code>{{.ReqBody.Schema}}</code></pre>{{end}}
-{{if .ReqBody.Example}}<pre class="docs__pre"><code>{{.ReqBody.Example}}</code></pre>{{end}}{{end}}
-{{if .Responses}}<h3>Responses</h3><table class="table"><tbody>
-{{range .Responses}}<tr><td><code>{{.Status}}</code></td><td>{{.Desc}}{{if .Type}} <code>{{.Type}}</code>{{end}}{{if .Schema}}<pre class="docs__pre"><code>{{.Schema}}</code></pre>{{end}}{{if .Example}}<pre class="docs__pre"><code>{{.Example}}</code></pre>{{end}}</td></tr>{{end}}
-</tbody></table>{{end}}
-{{range .Samples}}<pre class="docs__pre"><code>{{.Source}}</code></pre>{{end}}
-</article>{{end}}
-</section>{{end}}
-</section>
-</main>
-</body></html>
-{{define "toc"}}<nav class="docs__tocnav">{{range .Tags}}<a href="#tag-{{tagid .Name}}">{{.Name}}</a>{{range .Ops}}<a class="docs__tocop" href="#op-{{.ID}}"><span class="method method--{{lower .Method}}">{{.Method}}</span> {{.Path}}</a>{{end}}{{end}}</nav>{{end}}`

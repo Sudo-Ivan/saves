@@ -86,7 +86,11 @@ func (s *Server) newWebUI() *webUI {
 		any:      http.NewServeMux(),
 		allow:    map[string][]string{},
 	}
-	w.tmpl, err = webui.Parse(webui.Funcs(link))
+	fm := webui.Funcs(link)
+	fm["md"] = docMarkdown
+	fm["lower"] = strings.ToLower
+	fm["tagid"] = func(s string) string { return strings.ReplaceAll(strings.ToLower(s), " ", "-") }
+	w.tmpl, err = webui.Parse(fm)
 	if err != nil {
 		panic("web: " + err.Error())
 	}

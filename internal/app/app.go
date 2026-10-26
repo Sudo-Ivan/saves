@@ -439,19 +439,7 @@ func cmdServe(args []string) int {
 	if cfg.Bandwidth.Enabled {
 		defer srv.CloseBandwidth()
 	}
-	if cfg.Analytics.Enabled {
-		defer srv.CloseCollector()
-	}
-	if cfg.Bandwidth.Enabled {
-		defer srv.CloseBandwidth()
-	}
 	srv.Version = Version
-	if cfg.Analytics.Enabled {
-		defer srv.CloseCollector()
-	}
-	if cfg.Bandwidth.Enabled {
-		defer srv.CloseBandwidth()
-	}
 	runner := server.NewRunner(srv, cfg)
 	logVar := &slog.LevelVar{}
 	_ = logVar

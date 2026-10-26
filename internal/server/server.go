@@ -35,16 +35,18 @@ import (
 
 // Server bundles the dependencies handlers need.
 type Server struct {
-	ops   adminOps
-	Svc   *service.Service
-	Auth  auth.Chain
-	Reg   *auth.Registration
-	Meta  meta.Store
-	Blob  blob.Store
-	Log   *slog.Logger
-	Met   *metrics.Metrics
-	Cfg   *config.Config
-	Clock func() time.Time
+	ops adminOps
+
+	closeCollector, closeBW sync.Once
+	Svc                     *service.Service
+	Auth                    auth.Chain
+	Reg                     *auth.Registration
+	Meta                    meta.Store
+	Blob                    blob.Store
+	Log                     *slog.Logger
+	Met                     *metrics.Metrics
+	Cfg                     *config.Config
+	Clock                   func() time.Time
 
 	// Version is shown on the admin page only.
 	Version string
@@ -285,13 +287,13 @@ func (s *Server) SetGC(g *gc.Collector) { s.gc = g }
 // CloseCollector flushes and stops the analytics collector when enabled.
 func (s *Server) CloseCollector() {
 	if s.collector != nil {
-		s.collector.Close(context.Background())
+		s.closeCollector.Do(func() { s.collector.Close(context.Background()) })
 	}
 }
 
 // CloseBandwidth flushes and stops the bandwidth manager when enabled.
 func (s *Server) CloseBandwidth() {
 	if s.bw != nil {
-		s.bw.Close()
+		s.closeBW.Do(s.bw.Close)
 	}
 }

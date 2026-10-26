@@ -516,6 +516,7 @@ func (s *Server) whSessionRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("web session revoked", "user", wv.sess.UserID)
+	s.audit(wv.r.Context(), wv.sess.UserID, actSessRevoke, "session", "", "")
 	http.Redirect(w, r, wv.web.link+"account/security", http.StatusSeeOther)
 }
 
@@ -529,6 +530,7 @@ func (s *Server) whSessionRevokeOthers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("web sessions revoked", "user", wv.sess.UserID)
+	s.audit(wv.r.Context(), wv.sess.UserID, actSessRevoke, "session", "all", "")
 	http.Redirect(w, r, wv.web.link+"account/security", http.StatusSeeOther)
 }
 

@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -258,7 +259,13 @@ func TestAnonymous(t *testing.T) {
 
 func TestRegistration(t *testing.T) {
 	s, c := store(t)
-	r := &Registration{Mode: RegInvite, Meta: s, Invites: map[string]*Invite{"abc": {Code: "abc", MaxUses: 2}}, DefaultTier: "free", Clock: c.NowFunc()}
+	h := sha256.Sum256([]byte("abc"))
+	id, _ := meta.NewID(c.Now())
+	invNow := c.Now()
+	if err := s.CreateInvite(context.Background(), meta.Invite{ID: id, CodeHash: h, CodePrefix: "abc", MaxUses: 2, CreatedAt: &invNow}); err != nil {
+		t.Fatal(err)
+	}
+	r := &Registration{Mode: RegInvite, Meta: s, DefaultTier: "free", Clock: c.NowFunc()}
 	ctx := context.Background()
 	if _, err := r.Register(ctx, "ip", "bad"); !errors.Is(err, ErrBadInvite) {
 		t.Fatal("bad invite accepted")

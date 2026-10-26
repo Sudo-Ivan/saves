@@ -243,3 +243,43 @@ paths:
       responses:
         '200': {description: ok}
         '401': {description: auth}
+
+  /v1/admin/settings:
+    get:
+      responses: {'200': {description: settings}}
+    patch:
+      responses: {'200': {description: updated}}
+  /v1/admin/audit:
+    get:
+      responses: {'200': {description: audit events}}
+  /v1/admin/invites:
+    get:
+      responses: {'200': {description: invites}}
+    post:
+      responses: {'201': {description: invite code}}
+  /v1/admin/invites/{id}:
+    delete:
+      responses: {'200': {description: revoked}}
+  /v1/admin/ip-blocks:
+    get:
+      responses: {'200': {description: ip blocks}}
+    post:
+      responses: {'200': {description: added}}
+  /v1/admin/ip-blocks/{id}:
+    delete:
+      responses: {'200': {description: removed}}
+  /v1/admin/users/{id}/ban:
+    post:
+      responses: {'200': {description: banned}}
+  /v1/admin/users/{id}/unban:
+    post:
+      responses: {'200': {description: unbanned}}
+  /v1/admin/users/{id}/approve:
+    post:
+      responses: {'200': {description: approved}}
+  /v1/admin/users/{id}/reject:
+    post:
+      responses: {'200': {description: rejected}}
+  /v1/admin/users/{id}/password:
+    post:
+      responses: {'200': {description: temporary password}}

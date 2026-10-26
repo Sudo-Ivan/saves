@@ -435,7 +435,7 @@ func cmdServe(args []string) int {
 
 	// Housekeeping sweep every 10 minutes: expired web sessions and
 	// token audit rows past their retention.
-	if cfg.Web.Enabled || (cfg.Auth.Token.AuditEnabled && cfg.Auth.Token.AuditRetention > 0) || (cfg.Bandwidth.Enabled && cfg.Bandwidth.Retention > 0) {
+	if cfg.Web.Enabled || (cfg.Auth.Token.AuditEnabled && cfg.Auth.Token.AuditRetention > 0) || cfg.Bandwidth.Enabled || cfg.Audit.Enabled {
 		go func() {
 			t := time.NewTicker(10 * time.Minute)
 			defer t.Stop()
@@ -460,12 +460,36 @@ func cmdServe(args []string) int {
 							logger.Warn("bandwidth purge", "err", err)
 						}
 					}
+					if ids, err := m.ExpireBans(gcCtx, time.Now()); err == nil && len(ids) > 0 {
+						logger.Info("bans expired", "n", len(ids))
+					}
+					if err := m.PurgeExpiredIPBlocks(gcCtx, time.Now()); err != nil {
+						logger.Warn("ip block purge", "err", err)
+					}
+					if cfg.Audit.Enabled && cfg.Audit.Retention > 0 {
+						if err := m.PurgeAudit(gcCtx, time.Now().Add(-cfg.Audit.Retention.Duration())); err != nil {
+							logger.Warn("audit purge", "err", err)
+						}
+					}
+					_ = m.PurgeStats(gcCtx, meta.BandwidthDay(time.Now().Add(-400*24*time.Hour)))
 					if cfg.Bandwidth.Enabled && cfg.Bandwidth.Retention > 0 {
 						cut := meta.BandwidthDay(time.Now().Add(-cfg.Bandwidth.Retention.Duration()))
 						if err := m.PurgeBandwidth(gcCtx, cut); err != nil {
 							logger.Warn("bandwidth purge", "err", err)
 						}
 					}
+					if ids, err := m.ExpireBans(gcCtx, time.Now()); err == nil && len(ids) > 0 {
+						logger.Info("bans expired", "n", len(ids))
+					}
+					if err := m.PurgeExpiredIPBlocks(gcCtx, time.Now()); err != nil {
+						logger.Warn("ip block purge", "err", err)
+					}
+					if cfg.Audit.Enabled && cfg.Audit.Retention > 0 {
+						if err := m.PurgeAudit(gcCtx, time.Now().Add(-cfg.Audit.Retention.Duration())); err != nil {
+							logger.Warn("audit purge", "err", err)
+						}
+					}
+					_ = m.PurgeStats(gcCtx, meta.BandwidthDay(time.Now().Add(-400*24*time.Hour)))
 				}
 			}
 		}()
@@ -604,6 +628,10 @@ type reloader struct {
 	logVar *slog.LevelVar
 	runner *server.Runner
 	old    *config.Config
+	setMgr interface {
+		SetFileConfig(*config.Config)
+	}
+	setCfg *config.Config
 }
 
 // reload re-reads and validates the config, applies the reloadable

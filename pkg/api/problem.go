@@ -15,6 +15,8 @@ const (
 	CodeQuotaExceeded      = "quota_exceeded"
 	CodeRateLimited        = "rate_limited"
 	CodeBandwidthExceeded  = "bandwidth_exceeded"
+	CodeMaintenance        = "maintenance"
+	CodeIPBlocked          = "ip_blocked"
 	CodeInvalidManifest    = "invalid_manifest"
 	CodeNotFound           = "not_found"
 	CodeUnauthorized       = "unauthorized"

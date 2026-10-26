@@ -59,6 +59,10 @@ func (s *Server) hRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Reg.Register(r.Context(), s.clientIP(r), in.Invite)
 	if err != nil {
+		if errors.Is(err, auth.ErrPendingApproval) {
+			s.writeJSON(w, 202, map[string]any{"code": "pending_approval", "user_id": res.User.ID})
+			return
+		}
 		s.writeProblem(w, r, err)
 		return
 	}

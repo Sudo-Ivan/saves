@@ -30,6 +30,7 @@
     {{end}}
   </nav>
 </header>
+{{if .Announce}}<div class="announcement{{if .AnnounceWarn}} announcement--warn{{else}} announcement--info{{end}}" role="status">{{.Announce}}</div>{{end}}
 <main id="main" class="page-main{{if not .Authed}} page-main--home{{end}}">
 {{template "main" .}}
 </main>
@@ -38,6 +39,9 @@
   <p class="site-footer__sign">Keep your saves close.</p>
   <nav class="site-footer__links" aria-label="Footer">
     <a href="https://github.com/Sudo-Ivan/saves">Project</a>
+    {{if .Terms}}<a href="{{.Terms}}">Terms</a>{{end}}
+    {{if .Privacy}}<a href="{{.Privacy}}">Privacy</a>{{end}}
+    {{if .Contact}}<a href="{{.Contact}}">Contact</a>{{end}}
     <a href="https://github.com/Sudo-Ivan/saves/releases">Get the client</a>
     {{if .Authed}}<a href="{{.Base}}account">Account</a>{{else}}<a href="{{.Base}}login">Sign in</a>{{end}}
   </nav>
@@ -45,7 +49,10 @@
 </footer>
 {{else}}
 <footer class="site-footer site-footer--app">
-  <p class="site-footer__fine">{{.InstanceName}} · <a href="https://github.com/Sudo-Ivan/saves">Project</a></p>
+  <p class="site-footer__fine">{{.InstanceName}} · <a href="https://github.com/Sudo-Ivan/saves">Project</a>
+    {{if .Terms}}<a href="{{.Terms}}">Terms</a>{{end}}
+    {{if .Privacy}}<a href="{{.Privacy}}">Privacy</a>{{end}}
+    {{if .Contact}}<a href="{{.Contact}}">Contact</a>{{end}}</p>
 </footer>
 {{end}}
 </body>

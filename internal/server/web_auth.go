@@ -4,6 +4,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -79,6 +80,7 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 	fail := func(reason string) {
 		s.Met.WebLogin("failure")
 		s.Log.Info("web login failed", "ip", ip, "reason", reason)
+		s.audit(r.Context(), "", actLoginFail, "", "", fmt.Sprintf(`{"reason":%q,"ip":%q}`, reason, ip))
 		s.renderLogin(wv, msgBadLogin, next)
 	}
 
@@ -89,6 +91,7 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.web.userLock.locked(username) {
+		s.audit(r.Context(), "", actLockout, "", "", "")
 		fail("locked")
 		return
 	}
@@ -100,7 +103,7 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, uerr := s.Meta.GetUser(r.Context(), cred.UserID)
-	if uerr != nil || u.Disabled || u.DeletedAt != nil {
+	if uerr != nil || u.DeletedAt != nil {
 		auth.VerifyDummy(password)
 		s.web.userLock.fail(username)
 		fail("disabled")
@@ -127,6 +130,28 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.web.userLock.reset(username)
+	s.audit(r.Context(), u.ID, actLoginOK, "user", u.ID, fmt.Sprintf(`{"ip":%q}`, ip))
+
+	// moderation states show a fixed page, never a session
+	st, stErr := s.Meta.GetUserStatus(r.Context(), u.ID)
+	if stErr != nil && u.Disabled {
+		fail("disabled")
+		return
+	}
+	if stErr == nil {
+		switch st.State {
+		case "banned":
+			msg := "This account is suspended."
+			if s.siteVals().ShowBanReason && st.Reason != "" {
+				msg = "This account is suspended: " + st.Reason
+			}
+			s.renderLogin(wv, msg, next)
+			return
+		case "pending":
+			s.renderLogin(wv, "Your account is waiting for approval.", next)
+			return
+		}
+	}
 
 	if cred.TOTPEnabled {
 		if err := wv.createSession(u.ID, meta.SessionPending, meta.SessionMethodPassword,
@@ -341,6 +366,10 @@ func (s *Server) whRegisterPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("web registered", "user", u.ID)
+	if u.Disabled {
+		renderErr("Your account is waiting for approval.")
+		return
+	}
 	http.Redirect(w, r, wv.web.link+"login", http.StatusSeeOther)
 }
 

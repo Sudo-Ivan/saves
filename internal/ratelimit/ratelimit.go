@@ -70,3 +70,13 @@ func (l *Limiter) Allow(key string, cost float64) (bool, time.Duration) {
 	need := (cost - e.tokens) / l.rate
 	return false, time.Duration(need * float64(time.Second))
 }
+
+// Clear removes the bucket for key.
+func (l *Limiter) Clear(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if el, ok := l.items[key]; ok {
+		delete(l.items, key)
+		l.ll.Remove(el)
+	}
+}

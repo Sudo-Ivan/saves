@@ -264,6 +264,30 @@ func (l *usernameLock) locked(name string) bool {
 	return ok && l.clock().Before(e.until)
 }
 
+// Locked lists usernames currently locked with their unlock time.
+func (l *usernameLock) Locked() map[string]time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := map[string]time.Time{}
+	for k, e := range l.m {
+		if l.clock().Before(e.until) {
+			out[k] = e.until
+		}
+	}
+	return out
+}
+
+// ClearUnlock removes one or all lockouts.
+func (l *usernameLock) ClearUnlock(name string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if name == "" {
+		l.m = map[string]*lockEnt{}
+		return
+	}
+	delete(l.m, name)
+}
+
 // fail records one failed attempt for the username.
 func (l *usernameLock) fail(name string) {
 	l.mu.Lock()
@@ -746,6 +770,12 @@ func (wv *webReq) csrfCookieValue() string {
 type webPage struct {
 	Title        string
 	InstanceName string
+	Desc         string
+	Terms        string
+	Privacy      string
+	Contact      string
+	Announce     string
+	AnnounceWarn bool
 	Base         string
 	Authed       bool
 	Admin        bool
@@ -761,14 +791,24 @@ func (wv *webReq) render(name string, status int, data any) {
 		wv.errorPage(500)
 		return
 	}
+	sv := wv.s.siteVals()
 	pg := webPage{
-		Title: name, InstanceName: wv.s.Cfg.Web.InstanceName, Base: wv.web.link,
-		CSRF: wv.csrfToken(), RequestID: requestID(wv.r), Data: data,
+		Title: name, InstanceName: sv.SiteName, Base: wv.web.link,
+		Desc: sv.SiteDescription, Terms: sv.TermsURL, Privacy: sv.PrivacyURL,
+		Contact: sv.Contact,
+		CSRF:    wv.csrfToken(), RequestID: requestID(wv.r), Data: data,
 	}
 	wv.loadSession()
 	if wv.sess != nil && wv.sess.Kind == meta.SessionFull {
 		pg.Authed = true
 		pg.Admin = wv.effectiveAdmin()
+	}
+	if sv.Maintenance {
+		pg.Announce = sv.MaintenanceMsg
+		pg.AnnounceWarn = true
+	} else {
+		pg.Announce = sv.Announcement
+		pg.AnnounceWarn = sv.AnnouncementLvl == "warn"
 	}
 	h := wv.w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")

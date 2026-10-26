@@ -121,6 +121,7 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 	action := r.PostForm.Get("action")
 	switch action {
 	case "disable", "delete", "revoke_admin", "reset_2fa":
+		s.audit(wv.r.Context(), wv.sess.UserID, action, "user", id, "")
 		if id == wv.sess.UserID {
 			s.renderAdminUser(wv, "", "You cannot apply that action to your own account.")
 			return
@@ -178,11 +179,13 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, wv.web.link+"admin/users", http.StatusSeeOther)
 		return
 	case "revoke_sessions":
+		s.audit(wv.r.Context(), wv.sess.UserID, "revoke_sessions", "user", id, "")
 		if _, err := s.Meta.DeleteUserSessions(r.Context(), id, nil); err != nil {
 			fail(err)
 			return
 		}
 	case "grant_admin", "revoke_admin":
+		s.audit(wv.r.Context(), wv.sess.UserID, action, "user", id, "")
 		v := action == "grant_admin"
 		if err := s.Meta.UpdateCredential(r.Context(), id, meta.CredentialPatch{Admin: &v}); err != nil {
 			fail(err)

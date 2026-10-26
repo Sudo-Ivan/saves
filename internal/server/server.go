@@ -28,6 +28,7 @@ import (
 	"github.com/Sudo-Ivan/saves/internal/netx"
 	"github.com/Sudo-Ivan/saves/internal/ratelimit"
 	"github.com/Sudo-Ivan/saves/internal/service"
+	"github.com/Sudo-Ivan/saves/internal/settings"
 	"github.com/Sudo-Ivan/saves/pkg/api"
 )
 
@@ -54,7 +55,12 @@ type Server struct {
 	draining    atomic.Bool
 	web         *webUI
 	bw          *bwManager
-	gc          *gc.Collector
+	settings    interface {
+		Effective() settings.Values
+	}
+	auditor *Auditor
+	blocks  *ipBlocks
+	gc      *gc.Collector
 
 	oidcMu sync.Mutex
 	oidc   *webOIDC
@@ -66,6 +72,10 @@ type Options struct {
 	Logger    *slog.Logger
 	Metrics   *metrics.Metrics
 	LimiterIP *ratelimit.Limiter
+	// Settings provides live runtime settings; may be nil.
+	Settings interface {
+		Effective() settings.Values
+	}
 }
 
 // New builds a Server.
@@ -86,6 +96,7 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 		principalRL: ratelimit.New(100, 200, 1<<16, o.Clock),
 		accessLog:   cfg.Log.Access,
 		ready:       make(chan struct{}),
+		settings:    o.Settings,
 	}
 	if s.ipLimit == nil {
 		s.ipLimit = ratelimit.New(50, 100, 1<<16, o.Clock)
@@ -98,6 +109,11 @@ func New(svc *service.Service, m meta.Store, b blob.Store, a auth.Chain, reg *au
 				s.Log.Warn("web cookies will not be Secure on a non-loopback listener")
 			}
 		}
+	}
+	s.blocks = &ipBlocks{denied: map[string]time.Time{}}
+	if cfg.Audit.Enabled {
+		s.auditor = NewAuditor(m, o.Clock)
+		s.auditor.Start()
 	}
 	if cfg.Bandwidth.Enabled {
 		s.bw = newBwManager(m, o.Clock)
@@ -119,6 +135,20 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("PUT /v1/vault", s.hVaultPut)
 	mux.HandleFunc("DELETE /v1/vault", s.hVaultDelete)
 	mux.HandleFunc("GET /v1/events", s.hEvents)
+	mux.HandleFunc("GET /v1/admin/settings", s.hAdminSettingsGet)
+	mux.HandleFunc("PATCH /v1/admin/settings", s.hAdminSettingsPatch)
+	mux.HandleFunc("POST /v1/admin/users/{id}/ban", s.hAdminBan)
+	mux.HandleFunc("POST /v1/admin/users/{id}/unban", s.hAdminUnban)
+	mux.HandleFunc("POST /v1/admin/users/{id}/approve", s.hAdminApprove)
+	mux.HandleFunc("POST /v1/admin/users/{id}/reject", s.hAdminReject)
+	mux.HandleFunc("POST /v1/admin/users/{id}/password", s.hAdminSetPassword)
+	mux.HandleFunc("GET /v1/admin/invites", s.hAdminInvites)
+	mux.HandleFunc("POST /v1/admin/invites", s.hAdminInviteCreate)
+	mux.HandleFunc("DELETE /v1/admin/invites/{id}", s.hAdminInviteDelete)
+	mux.HandleFunc("GET /v1/admin/ip-blocks", s.hAdminBlocks)
+	mux.HandleFunc("POST /v1/admin/ip-blocks", s.hAdminBlockCreate)
+	mux.HandleFunc("DELETE /v1/admin/ip-blocks/{id}", s.hAdminBlockDelete)
+	mux.HandleFunc("GET /v1/admin/audit", s.hAdminAudit)
 	mux.HandleFunc("GET /v1/apps", s.hApps)
 	mux.HandleFunc("GET /v1/apps/{app}/slots", s.hSlots)
 	mux.HandleFunc("GET /v1/apps/{app}/slots/{slot}", s.hSlot)
@@ -228,6 +258,14 @@ func (s *Server) clientIP(r *http.Request) string {
 }
 
 func (s *Server) trustedCIDRs() []netip.Prefix { return s.Cfg.TrustedProxyPrefixes() }
+
+// siteVals returns the live site settings, falling back to config.
+func (s *Server) siteVals() settings.Values {
+	if s.settings != nil {
+		return s.settings.Effective()
+	}
+	return settings.Defaults(s.Cfg)
+}
 
 // SetGC wires the GC for admin-triggered runs.
 func (s *Server) SetGC(g *gc.Collector) { s.gc = g }

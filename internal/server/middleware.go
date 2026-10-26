@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/Sudo-Ivan/saves/internal/netx"
 	"github.com/Sudo-Ivan/saves/internal/service"
+	"github.com/Sudo-Ivan/saves/pkg/api"
 	"io"
 	"net/http"
 	"strconv"
@@ -242,7 +243,7 @@ type writerOnly struct{ io.Writer }
 // Handler assembles the middleware chain. /v1 goes to the API mux,
 // everything else to the web handler when enabled.
 func (s *Server) Handler() http.Handler {
-	api := s.cors(s.bandwidthMW(s.Mux()))
+	api := s.cors(s.maintenanceMW(s.bandwidthMW(s.Mux())))
 	var h http.Handler = api
 	if s.web != nil {
 		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -261,6 +262,7 @@ func (s *Server) Handler() http.Handler {
 			api.ServeHTTP(w, r)
 		})
 	}
+	h = s.ipBlockMW(h)
 	h = s.altSvc(h)
 	h = s.clientCtx(h)
 	h = s.requestLog(h)
@@ -275,5 +277,29 @@ func (s *Server) clientCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := netx.ClientIPReal(r, s.trustedCIDRs(), s.Cfg.Proxy.RealIPHeader).String()
 		next.ServeHTTP(w, r.WithContext(service.WithClient(r.Context(), ip, r.UserAgent())))
+	})
+}
+
+// maintenanceMW returns 503 for /v1 writes while maintenance mode is
+// on. Reads, /v1/admin, /v1/me and token routes still work.
+func (s *Server) maintenanceMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v1/") || r.Method == "GET" || r.Method == "HEAD" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sv := s.siteVals()
+		if !sv.Maintenance {
+			next.ServeHTTP(w, r)
+			return
+		}
+		p := r.URL.Path
+		if p == "/v1/me" || p == "/v1/register" || strings.HasPrefix(p, "/v1/admin") || strings.HasPrefix(p, "/v1/tokens") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Retry-After", "60")
+		s.writeProblem(w, r, &api.Problem{Code: api.CodeMaintenance,
+			Title: "maintenance", Status: 503, Detail: sv.MaintenanceMsg})
 	})
 }

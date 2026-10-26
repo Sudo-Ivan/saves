@@ -2,7 +2,7 @@
 <section class="hero">
   <div class="hero__col">
     <h1 class="hero__title">Your saves, on your server.</h1>
-    <p class="hero__text">{{.InstanceName}} syncs game saves between your machines.</p>
+    <p class="hero__text">{{if .Desc}}{{.Desc}}{{else}}{{.InstanceName}} syncs game saves between your machines.{{end}}</p>
     <div class="hero__actions">
       <a class="button button--ink" href="{{.Base}}login">Sign in</a>
       {{if .Data.Register}}<a class="button button--card" href="{{.Base}}register">Create account</a>{{end}}

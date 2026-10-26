@@ -13,6 +13,7 @@ type Config struct {
 	Storage      StorageConfig      `json:"storage" doc:"blob and metadata backends"`
 	Auth         AuthConfig         `json:"auth" doc:"authentication method chain"`
 	Registration RegistrationConfig `json:"registration" doc:"self service user registration"`
+	Audit        AuditConfig        `json:"audit" doc:"admin and auth audit log"`
 	Quota        QuotaConfig        `json:"quota" doc:"tiers, defaults, and per app policy"`
 	Limits       LimitsConfig       `json:"limits" doc:"manifest, chunk, and request limits"`
 	GC           GCConfig           `json:"gc" doc:"garbage collection schedule"`
@@ -28,6 +29,10 @@ type Config struct {
 // WebConfig controls the built in browser UI.
 type WebConfig struct {
 	Enabled         bool             `json:"enabled" doc:"serve the web UI"`
+	Description     string           `json:"description" doc:"short site description shown on the homepage"`
+	TermsURL        string           `json:"terms_url" doc:"terms of service link"`
+	PrivacyURL      string           `json:"privacy_url" doc:"privacy policy link"`
+	Contact         string           `json:"contact" doc:"contact link, https or mailto or relative"`
 	InstanceName    string           `json:"instance_name" doc:"display name used in pages and TOTP issuer"`
 	PublicURL       string           `json:"public_url" doc:"external base URL like https://host/prefix, required for web OIDC"`
 	Homepage        bool             `json:"homepage" doc:"show the landing page at /, otherwise redirect to the sign in page"`
@@ -247,6 +252,8 @@ type RegistrationConfig struct {
 	InviteCodesFile string   `json:"invite_codes_file" doc:"path to file with one invite code per line"`
 	InviteMaxUses   int      `json:"invite_max_uses" doc:"max uses per invite code, 0 is unlimited"`
 	PerSec          float64  `json:"per_sec" doc:"registration rate limit per IP for mode open"`
+	RequireApproval bool     `json:"require_approval" doc:"new registrations need admin approval"`
+	MaxPerIPPerDay  int      `json:"max_per_ip_per_day" doc:"registrations per client IP per day, 0 off"`
 }
 
 // QuotaConfig holds tiers and per app policy.
@@ -459,4 +466,10 @@ func Defaults() Config {
 		OIDC:            WebOIDCConfig{Scopes: "openid profile email", Label: "Single sign-on"},
 	}
 	return c
+}
+
+// AuditConfig controls the admin audit log.
+type AuditConfig struct {
+	Enabled   bool     `json:"enabled" doc:"record admin and auth audit events"`
+	Retention Duration `json:"retention" doc:"how long audit rows are kept"`
 }

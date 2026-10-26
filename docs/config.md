@@ -159,6 +159,14 @@ self service user registration
 - registration.invite_codes_file: path to file with one invite code per line
 - registration.invite_max_uses: max uses per invite code, 0 is unlimited
 - registration.per_sec: registration rate limit per IP for mode open
+- registration.require_approval: new registrations need admin approval
+- registration.max_per_ip_per_day: registrations per client IP per day, 0 off
+## audit
+
+admin and auth audit log
+
+- audit.enabled: record admin and auth audit events
+- audit.retention: how long audit rows are kept
 ## quota
 
 tiers, defaults, and per app policy
@@ -231,6 +239,10 @@ Prometheus metrics
 browser UI, off by default
 
 - web.enabled: serve the web UI
+- web.description: short site description shown on the homepage
+- web.terms_url: terms of service link
+- web.privacy_url: privacy policy link
+- web.contact: contact link, https or mailto or relative
 - web.instance_name: display name used in pages and TOTP issuer
 - web.public_url: external base URL like https://host/prefix, required for web OIDC
 - web.homepage: show the landing page at /, otherwise redirect to the sign in page

@@ -1,0 +1,45 @@
+{{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+<section class="panel">
+  <h1 class="panel__title">Invites</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  {{if .Data.NewCode}}<div class="panel panel--highlight"><p>Invite code</p><p><code class="code--block" id="new-invite">{{.Data.NewCode}}</code></p><p><button class="button button--small" type="button" data-copy="#new-invite" hidden>Copy code</button></p></div>{{end}}
+  <p class="field__hint">Invites let people register while registration is set to invite only. Codes are stored hashed and shown once.</p>
+  <form class="form form--inline filters" method="post" action="{{.Base}}admin/invites">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="field"><label class="field__label" for="label">Label</label><input class="field__input" id="label" name="label" type="text" maxlength="80" placeholder="Friends"></div>
+    <div class="field"><label class="field__label" for="max_uses">Uses (0 unlimited)</label><input class="field__input" id="max_uses" name="max_uses" type="number" min="0" value="1"></div>
+    <div class="field"><label class="field__label" for="days">Valid for days (empty for no end)</label><input class="field__input" id="days" name="days" type="number" min="1" max="3650"></div>
+    <button class="button button--ink" type="submit">Create invite</button>
+  </form>
+  {{if .Data.Invites}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Code</th><th class="table__head">Label</th><th class="table__head">Status</th><th class="table__head num">Used</th><th class="table__head">Expires</th><th class="table__head"></th></tr></thead>
+    <tbody>{{range .Data.Invites}}
+      <tr class="table__row"><td class="table__cell">{{.CodePrefix}}...</td><td class="table__cell">{{.Label}}</td><td class="table__cell">{{.Status}}</td>
+        <td class="table__cell num">{{.Uses}}{{if .MaxUses}} / {{.MaxUses}}{{end}}</td><td class="table__cell">{{if .ExpiresAt}}{{fdatep .ExpiresAt}}{{else}}Never{{end}}</td>
+        <td class="table__cell table__cell--actions">{{if eq .Status "active"}}<form class="form form--inline" method="post" action="{{$.Base}}admin/invites/{{.ID}}/revoke"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="button button--small button--danger" type="submit">Revoke</button></form>{{end}}</td></tr>
+    {{end}}</tbody></table></div>
+  {{else}}<div class="empty"><p class="empty__title">No invites yet</p><p class="empty__text">Create one to let a specific person register.</p></div>{{end}}
+</section>
+<section class="panel">
+  <h2 class="panel__title">Blocked addresses</h2>
+  <p class="field__hint">Blocked addresses get a plain refusal on every page and API call. Your own address is {{.Data.MyIP}} and cannot be blocked.</p>
+  <form class="form form--inline filters" method="post" action="{{.Base}}admin/ip-blocks">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="field"><label class="field__label" for="cidr">Address or CIDR</label><input class="field__input" id="cidr" name="cidr" type="text" required placeholder="203.0.113.0/24" spellcheck="false"></div>
+    <div class="field"><label class="field__label" for="breason">Reason</label><input class="field__input" id="breason" name="reason" type="text" maxlength="200"></div>
+    <div class="field"><label class="field__label" for="bdays">Days (empty for no end)</label><input class="field__input" id="bdays" name="days" type="number" min="1" max="3650"></div>
+    <button class="button button--danger" type="submit">Block</button>
+  </form>
+  {{if .Data.Blocks}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Address</th><th class="table__head">Reason</th><th class="table__head">Added</th><th class="table__head">Ends</th><th class="table__head"></th></tr></thead>
+    <tbody>{{range .Data.Blocks}}
+      <tr class="table__row"><td class="table__cell">{{.CIDR}}</td><td class="table__cell">{{.Reason}}</td><td class="table__cell">{{fdate .CreatedAt}}</td><td class="table__cell">{{if .ExpiresAt}}{{fdatep .ExpiresAt}}{{else}}Never{{end}}</td>
+      <td class="table__cell table__cell--actions"><form class="form form--inline" method="post" action="{{$.Base}}admin/ip-blocks/{{.ID}}/remove"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="button button--small" type="submit">Remove</button></form></td></tr>
+    {{end}}</tbody></table></div>
+  {{else}}<div class="empty"><p class="empty__title">Nothing blocked</p></div>{{end}}
+</section>
+{{end}}

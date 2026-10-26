@@ -1,0 +1,50 @@
+{{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+<section class="panel">
+  <h1 class="panel__title">System</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  <dl class="detail-list">
+    <dt class="detail-list__key">Version</dt><dd class="detail-list__val">{{.Data.Info.Version}}</dd>
+    <dt class="detail-list__key">Uptime</dt><dd class="detail-list__val">{{.Data.Uptime}}, started {{.Data.Started}}</dd>
+    <dt class="detail-list__key">Runtime</dt><dd class="detail-list__val">{{.Data.Info.GoVersion}} on {{.Data.Info.GOOS}}/{{.Data.Info.GOARCH}}</dd>
+    <dt class="detail-list__key">Memory</dt><dd class="detail-list__val">{{.Data.Heap}} in use, {{.Data.Info.NumGC}} collections, {{.Data.Info.Goroutines}} goroutines</dd>
+    <dt class="detail-list__key">Metadata</dt><dd class="detail-list__val">{{.Data.Info.MetaDriver}}{{if .Data.Info.MetaDBBytes}}, database {{.Data.DBSize}}{{end}}</dd>
+    <dt class="detail-list__key">Blob store</dt><dd class="detail-list__val">{{.Data.Info.BlobDriver}}</dd>
+    <dt class="detail-list__key">Listener</dt><dd class="detail-list__val">{{.Data.Info.Listener}}, TLS {{.Data.Info.TLSMode}}</dd>
+    <dt class="detail-list__key">Features</dt><dd class="detail-list__val">{{range $i, $f := .Data.Info.Features}}{{if $i}}, {{end}}{{$f}}{{end}}</dd>
+    <dt class="detail-list__key">Runtime overrides</dt><dd class="detail-list__val">{{.Data.Info.Overrides}}</dd>
+  </dl>
+  {{if .Data.HasDisk}}
+  <div class="meter-block">
+    <p class="meter-block__label">Blob disk: {{.Data.DiskFree}} free of {{.Data.DiskTotal}}</p>
+    <meter class="meter" min="0" max="100" low="70" high="90" optimum="10" value="{{.Data.DiskUsedPct}}">{{.Data.DiskUsedPct}} percent used</meter>
+  </div>
+  {{end}}
+</section>
+<section class="panel">
+  <h2 class="panel__title">Maintenance</h2>
+  <div class="ops">
+    <div class="ops__item">
+      <h3 class="panel__subtitle">Garbage collection</h3>
+      <p class="ops__result">{{if .Data.GC.Summary}}{{.Data.GC.Summary}} Last run {{fdate .Data.GC.At}}.{{else}}No manual run since the server started.{{end}}</p>
+      <form class="form form--inline" method="post" action="{{.Base}}admin/gc"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="button" type="submit">Run garbage collection</button></form>
+    </div>
+    <div class="ops__item">
+      <h3 class="panel__subtitle">Integrity check</h3>
+      <p class="ops__result">{{if .Data.Fsck.Running}}Running since {{fdate .Data.Fsck.At}}. Reload to see the result.{{else if .Data.Fsck.Err}}{{.Data.Fsck.Err}}{{else if .Data.Fsck.Summary}}{{.Data.Fsck.Summary}} Checked {{fdate .Data.Fsck.At}}.{{else}}Not run since the server started.{{end}}</p>
+      {{if .Data.Fsck.Issues}}<ul class="ops__issues">{{range .Data.Fsck.Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
+      <form class="form form--inline" method="post" action="{{.Base}}admin/fsck"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="button" type="submit"{{if .Data.Fsck.Running}} disabled{{end}}>Run integrity check</button></form>
+    </div>
+    <div class="ops__item">
+      <h3 class="panel__subtitle">Database backup</h3>
+      {{if .Data.BackupEnabled}}
+      <p class="ops__result">Copies go to {{.Data.BackupDir}}. The newest seven are kept.</p>
+      <form class="form form--inline" method="post" action="{{.Base}}admin/backup"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="button" type="submit">Back up database now</button></form>
+      {{else}}
+      <p class="ops__result">Set admin.backup_dir in the server config to a writable directory to enable backups of the SQLite database.</p>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

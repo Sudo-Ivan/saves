@@ -35,6 +35,7 @@ import (
 
 // Server bundles the dependencies handlers need.
 type Server struct {
+	ops   adminOps
 	Svc   *service.Service
 	Auth  auth.Chain
 	Reg   *auth.Registration
@@ -257,6 +258,9 @@ func (s *Server) authn(w http.ResponseWriter, r *http.Request) (auth.Principal, 
 	}
 	if !s.bwAttach(r, p, w) {
 		return auth.Principal{}, false
+	}
+	if s.collector != nil {
+		s.collector.Active(p.User.ID)
 	}
 	return p, true
 }

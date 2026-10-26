@@ -79,6 +79,9 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 
 	fail := func(reason string) {
 		s.Met.WebLogin("failure")
+		if s.collector != nil {
+			s.collector.Login(false)
+		}
 		s.Log.Info("web login failed", "ip", ip, "reason", reason)
 		s.audit(r.Context(), "", actLoginFail, "", "", fmt.Sprintf(`{"reason":%q,"ip":%q}`, reason, ip))
 		s.renderLogin(wv, msgBadLogin, next)
@@ -130,6 +133,9 @@ func (s *Server) whLoginPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.web.userLock.reset(username)
+	if s.collector != nil {
+		s.collector.Login(true)
+	}
 	s.audit(r.Context(), u.ID, actLoginOK, "user", u.ID, fmt.Sprintf(`{"ip":%q}`, ip))
 
 	// moderation states show a fixed page, never a session

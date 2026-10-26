@@ -1,23 +1,55 @@
 {{define "main"}}
+{{template "adminnav" .Data.Tabs}}
 <section class="panel">
-  <h1 class="panel__title">Users</h1>
-  <table class="table">
+  <div class="panel__bar">
+    <h1 class="panel__title">Users</h1>
+    <p class="panel__meta">{{.Data.Total}} {{if eq .Data.Total 1}}account{{else}}accounts{{end}}</p>
+  </div>
+  <form class="form form--inline filters" method="get" action="{{.Base}}admin/users">
+    <div class="field"><label class="field__label" for="q">Search</label>
+      <input class="field__input" id="q" name="q" type="search" value="{{.Data.Q}}" placeholder="Name, id or subject" maxlength="100"></div>
+    <div class="field"><label class="field__label" for="state">Status</label>
+      <select class="field__select" id="state" name="state">{{range .Data.States}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="field"><label class="field__label" for="sort">Sort by</label>
+      <select class="field__select" id="sort" name="sort">
+        <option value="created"{{if eq .Data.Sort "created"}} selected{{end}}>Joined</option>
+        <option value="used"{{if eq .Data.Sort "used"}} selected{{end}}>Storage used</option>
+        <option value="last_active"{{if eq .Data.Sort "last_active"}} selected{{end}}>Last active</option>
+        <option value="name"{{if eq .Data.Sort "name"}} selected{{end}}>Name</option>
+      </select></div>
+    <div class="field"><label class="field__label" for="dir">Order</label>
+      <select class="field__select" id="dir" name="dir"><option value="desc"{{if .Data.Desc}} selected{{end}}>Descending</option><option value="asc"{{if not .Data.Desc}} selected{{end}}>Ascending</option></select></div>
+    <label class="field__check"><input type="checkbox" name="admins" value="1"{{if .Data.AdminOnly}} checked{{end}}> Admins only</label>
+    <button class="button" type="submit">Apply</button>
+  </form>
+  {{if .Data.Rows}}
+  <div class="table-wrap"><table class="table">
     <thead><tr>
-      <th class="table__head">ID</th><th class="table__head">Subject</th><th class="table__head">Tier</th>
-      <th class="table__head">Disabled</th><th class="table__head num">Created</th>
+      <th class="table__head">Account</th><th class="table__head">Status</th><th class="table__head">Tier</th>
+      <th class="table__head">Storage</th><th class="table__head num">Snapshots</th><th class="table__head num">Tokens</th>
+      <th class="table__head">Last active</th>
     </tr></thead>
     <tbody>
-    {{range .Data.Users}}
+    {{range .Data.Rows}}
       <tr class="table__row">
-        <td class="table__cell"><a href="{{$.Base}}admin/users/{{.ID}}">{{.ID}}</a></td>
-        <td class="table__cell">{{.Subject}}</td>
-        <td class="table__cell">{{.Tier}}</td>
-        <td class="table__cell">{{.Disabled}}</td>
-        <td class="table__cell num">{{fdate .CreatedAt}}</td>
+        <td class="table__cell"><a href="{{$.Base}}admin/users/{{.User.ID}}">{{.Name}}</a>{{if .WebAdmin}} <span class="tag">admin</span>{{end}}{{if .TOTP}} <span class="tag">2FA</span>{{end}}</td>
+        <td class="table__cell">{{if .Status}}{{.Status}}{{else if .User.DeletedAt}}deleted{{else if .User.Disabled}}disabled{{else}}active{{end}}</td>
+        <td class="table__cell">{{.User.Tier}}</td>
+        <td class="table__cell">{{fsize .UsedBytes}}{{if .QuotaText}} of {{.QuotaText}}{{end}}</td>
+        <td class="table__cell num">{{.Snapshots}}</td>
+        <td class="table__cell num">{{.Tokens}}</td>
+        <td class="table__cell">{{if .Last}}{{.Last}}{{else}}Never{{end}}</td>
       </tr>
     {{end}}
     </tbody>
-  </table>
-  {{if .Data.More}}<p><a class="button button--secondary" href="{{.Base}}admin/users?after={{.Data.After}}">Next page</a></p>{{end}}
+  </table></div>
+  <p class="pager">
+    {{if .Data.PrevHref}}<a class="button button--small" href="{{.Data.PrevHref}}">Previous</a>{{end}}
+    <span class="panel__meta">Page {{.Data.Page}} of {{.Data.Pages}}</span>
+    {{if .Data.NextHref}}<a class="button button--small" href="{{.Data.NextHref}}">Next</a>{{end}}
+  </p>
+  {{else}}
+  <div class="empty"><p class="empty__title">No accounts match</p><p class="empty__text">Change the search or the status filter.</p></div>
+  {{end}}
 </section>
 {{end}}

@@ -1,0 +1,24 @@
+{{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+<section class="panel">
+  <h1 class="panel__title">Security checkup</h1>
+  <p class="field__hint">Checks the running configuration and runtime settings for common problems on a public instance.</p>
+  {{if .Data.OK}}
+  <div class="empty"><p class="empty__title">Everything checked looks fine</p><p class="empty__text">No findings for the current configuration.</p></div>
+  {{end}}
+</section>
+{{range .Data.Groups}}
+<section class="panel">
+  <h2 class="panel__title">{{.Label}}</h2>
+  <ul class="findings">
+    {{range .Items}}
+    <li class="finding finding--{{.Severity}}" id="{{.ID}}">
+      <h3 class="finding__title">{{.Title}}</h3>
+      <p class="finding__detail">{{.Detail}}</p>
+      {{if .Fix}}<p class="finding__fix"><strong>How to fix:</strong> {{.Fix}}</p>{{end}}
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

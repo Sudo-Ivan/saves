@@ -50,6 +50,8 @@ type Registration struct {
 	Effective func() RegistrationSettings
 	// Audit records one audit event; nil is fine.
 	Audit func(ctx context.Context, e meta.AuditEvent)
+	// Signup counts a registration; nil is fine.
+	Signup func()
 
 	mu     sync.Mutex
 	perSec float64
@@ -141,6 +143,9 @@ func (rg *Registration) consumeInvite(ctx context.Context, code, userID, ip stri
 
 // afterUser writes the register audit event and the pending status.
 func (rg *Registration) afterUser(ctx context.Context, eff RegistrationSettings, u meta.User, ip string) error {
+	if rg.Signup != nil {
+		rg.Signup()
+	}
 	if rg.Audit != nil {
 		id, _ := meta.NewID(rg.now())
 		rg.Audit(ctx, meta.AuditEvent{ID: id, At: rg.now(), Action: "register",

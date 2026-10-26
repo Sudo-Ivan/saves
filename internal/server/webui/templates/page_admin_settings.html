@@ -1,0 +1,38 @@
+{{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+<section class="panel">
+  <h1 class="panel__title">Settings</h1>
+  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
+  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  {{if not .Data.Available}}
+  <div class="empty"><p class="empty__title">Runtime settings are not available</p><p class="empty__text">This server was started without the settings manager.</p></div>
+  {{else}}
+  <p class="field__hint">Changes apply immediately on this server and reach other nodes within seconds. A value that matches the config file is not stored as an override. Reset returns one setting to the file value.</p>
+  <form class="form" method="post" action="{{.Base}}admin/settings">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    {{range .Data.Groups}}
+    <fieldset class="field settings-group">
+      <legend class="field__label settings-group__title">{{.Title}}</legend>
+      {{range .Rows}}
+      <div class="field setting">
+        {{if eq .Type "bool"}}
+        <label class="field__check"><input type="checkbox" name="f:{{.Key}}" value="1"{{if .Bool}} checked{{end}}> {{.Label}}</label>
+        {{else}}
+        <label class="field__label" for="f-{{.Key}}">{{.Label}}</label>
+        {{if eq .Type "enum"}}
+        <select class="field__select" id="f-{{.Key}}" name="f:{{.Key}}">{{$v := .Value}}{{range .Enum}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
+        {{else}}
+        <input class="field__input" id="f-{{.Key}}" name="f:{{.Key}}" type="text" value="{{.Value}}" autocomplete="off" spellcheck="false">
+        {{end}}
+        {{end}}
+        <p class="field__hint">{{.Key}}{{if .Overridden}}. Overridden{{if .By}} by {{trunc .By 12}}{{end}}{{end}}{{if eq .Type "duration"}}. Use a duration like 24h or 90d, 0 for none{{end}}</p>
+      </div>
+      {{end}}
+    </fieldset>
+    {{end}}
+    <div class="field"><label class="field__label" for="cpw">Your password</label><input class="field__input" id="cpw" name="confirm_password" type="password" autocomplete="current-password"></div>
+    <button class="button button--ink" type="submit">Save settings</button>
+  </form>
+  {{end}}
+</section>
+{{end}}

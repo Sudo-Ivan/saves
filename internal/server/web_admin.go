@@ -6,91 +6,18 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Sudo-Ivan/saves/internal/meta"
 )
-
-func (s *Server) whAdmin(w http.ResponseWriter, r *http.Request) {
-	wv := webFrom(r)
-	if !wv.requireAdmin() {
-		return
-	}
-	// Same source as the API: page the full user list for the count.
-	count := 0
-	after := ""
-	for {
-		users, err := s.Svc.AdminListUsers(r.Context(), wv.principal(), after, 200)
-		if err != nil {
-			s.webServiceError(wv, err)
-			return
-		}
-		count += len(users)
-		if len(users) < 200 {
-			break
-		}
-		after = users[len(users)-1].ID
-	}
-	notice := ""
-	if r.URL.Query().Get("gc") == "1" {
-		notice = "Garbage collection complete."
-	}
-	wv.render("admin", 200, struct {
-		Users   int
-		Version string
-		Notice  string
-	}{Users: count, Version: s.Version, Notice: notice})
-}
-
-func (s *Server) whAdminUsers(w http.ResponseWriter, r *http.Request) {
-	wv := webFrom(r)
-	if !wv.requireAdmin() {
-		return
-	}
-	users, err := s.Svc.AdminListUsers(r.Context(), wv.principal(), r.URL.Query().Get("after"), 50)
-	if err != nil {
-		s.webServiceError(wv, err)
-		return
-	}
-	more, after := false, ""
-	if len(users) == 50 {
-		more = true
-		after = users[len(users)-1].ID
-	}
-	wv.render("admin_users", 200, struct {
-		Users []meta.User
-		More  bool
-		After string
-	}{Users: users, More: more, After: after})
-}
 
 func (s *Server) whAdminUser(w http.ResponseWriter, r *http.Request) {
 	wv := webFrom(r)
 	if !wv.requireAdmin() {
 		return
 	}
-	s.renderAdminUser(wv, "", "")
-}
-
-func (s *Server) renderAdminUser(wv *webReq, notice, errMsg string) {
-	r := wv.r
-	u, usage, err := s.Svc.AdminGetUser(r.Context(), wv.principal(), r.PathValue("id"))
-	if err != nil {
-		s.webServiceError(wv, err)
-		return
-	}
-	var cred *meta.WebCredential
-	if c, err := s.Meta.GetCredential(r.Context(), u.ID); err == nil {
-		cc := c
-		cred = &cc
-	}
-	wv.render("admin_user", 200, struct {
-		U      meta.User
-		Usage  meta.Usage
-		Cred   *meta.WebCredential
-		Notice string
-		Error  string
-		Tokens []tokenRow
-	}{U: u, Usage: usage, Cred: cred, Notice: notice, Error: errMsg, Tokens: s.adminUserTokens(wv, u.ID)})
+	s.renderAdminUser(wv, "", "", "")
 }
 
 func (s *Server) whAdminUserDeleteGet(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +50,7 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 	case "disable", "delete", "revoke_admin", "reset_2fa":
 		s.audit(wv.r.Context(), wv.sess.UserID, action, "user", id, "")
 		if id == wv.sess.UserID {
-			s.renderAdminUser(wv, "", "You cannot apply that action to your own account.")
+			s.renderAdminUser(wv, "", "You cannot apply that action to your own account.", "")
 			return
 		}
 	}
@@ -151,7 +78,7 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 		} else {
 			n, err := strconv.ParseInt(q, 10, 64)
 			if err != nil || n < 0 {
-				s.renderAdminUser(wv, "", "Quota must be a non-negative byte count.")
+				s.renderAdminUser(wv, "", "Quota must be a non-negative byte count.", "")
 				return
 			}
 			patch.QuotaBytes = &meta.Optional[int64]{Set: true, Value: n}
@@ -171,6 +98,10 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 		}
 		s.invalidateUser(id)
 	case "delete":
+		if !wv.stepUp() {
+			s.renderAdminUser(wv, "", "Enter your own password to confirm this action.", "")
+			return
+		}
 		if err := s.Svc.AdminDeleteUser(r.Context(), p, id); err != nil {
 			fail(err)
 			return
@@ -187,6 +118,10 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "grant_admin", "revoke_admin":
+		if !wv.stepUp() {
+			s.renderAdminUser(wv, "", "Enter your own password to confirm this action.", "")
+			return
+		}
 		s.audit(wv.r.Context(), wv.sess.UserID, action, "user", id, "")
 		v := action == "grant_admin"
 		if err := s.Meta.UpdateCredential(r.Context(), id, meta.CredentialPatch{Admin: &v}); err != nil {
@@ -196,6 +131,10 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 		// Role change kills existing sessions.
 		_, _ = s.Meta.DeleteUserSessions(r.Context(), id, nil)
 	case "reset_2fa":
+		if !wv.stepUp() {
+			s.renderAdminUser(wv, "", "Enter your own password to confirm this action.", "")
+			return
+		}
 		no := false
 		empty := []byte{}
 		zero := int64(0)
@@ -205,6 +144,53 @@ func (s *Server) whAdminUserPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = s.Meta.DeleteUserSessions(r.Context(), id, nil)
+	case "ban":
+		reason := strings.TrimSpace(r.PostForm.Get("reason"))
+		var until *time.Time
+		if d, err := strconv.Atoi(r.PostForm.Get("days")); err == nil && d > 0 && d <= 3650 {
+			t := s.now().Add(time.Duration(d) * 24 * time.Hour)
+			until = &t
+		}
+		if err := s.Ban(r.Context(), wv.sess.UserID, id, reason, until, r.PostForm.Get("revoke_tokens") == "1"); err != nil {
+			s.renderAdminUser(wv, "", "That account cannot be banned: it is your own account or the last administrator.", "")
+			return
+		}
+	case "unban":
+		if err := s.Unban(r.Context(), wv.sess.UserID, id); err != nil {
+			fail(err)
+			return
+		}
+	case "approve":
+		if err := s.Approve(r.Context(), wv.sess.UserID, id); err != nil {
+			fail(err)
+			return
+		}
+	case "reject":
+		if err := s.Reject(r.Context(), wv.sess.UserID, id); err != nil {
+			fail(err)
+			return
+		}
+		http.Redirect(w, r, wv.web.link+"admin/users?state=pending", http.StatusSeeOther) // #nosec G710 -- fixed route
+		return
+	case "unlock":
+		if c, err := s.Meta.GetCredential(r.Context(), id); err == nil {
+			s.web.userLock.ClearUnlock(c.Username)
+		}
+	case "set_password":
+		if !wv.stepUp() {
+			s.renderAdminUser(wv, "", "Enter your own password to confirm this action.", "")
+			return
+		}
+		gen := r.PostForm.Get("generate") == "1"
+		pw, err := s.AdminSetPassword(r.Context(), wv.sess.UserID, id, r.PostForm.Get("new_password"), gen)
+		if err != nil {
+			s.renderAdminUser(wv, "", "That password was rejected. Use at least 12 characters, or generate one.", "")
+			return
+		}
+		if gen {
+			s.renderAdminUser(wv, "The password was replaced and the account must change it at next sign-in.", "", pw)
+			return
+		}
 	default:
 		wv.errorPage(400)
 		return
@@ -223,13 +209,10 @@ func (s *Server) whAdminGC(w http.ResponseWriter, r *http.Request) {
 		wv.errorPage(404)
 		return
 	}
-	if _, err := s.gc.RunOnce(r.Context()); err != nil {
+	if err := s.RunGC(r.Context()); err != nil {
 		s.Log.Error("web admin gc", "err", err)
-		wv.render("admin", 200, struct {
-			Users           int
-			Version, Notice string
-		}{Version: s.Version, Notice: "Garbage collection failed."})
+		http.Redirect(w, r, wv.web.link+"admin/system?n=gcfail", http.StatusSeeOther) // #nosec G710 -- fixed route
 		return
 	}
-	http.Redirect(w, r, wv.web.link+"admin?gc=1", http.StatusSeeOther)
+	http.Redirect(w, r, wv.web.link+"admin/system?n=gc", http.StatusSeeOther) // #nosec G710 -- fixed route
 }

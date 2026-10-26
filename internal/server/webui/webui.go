@@ -76,7 +76,7 @@ func Parse(funcs template.FuncMap) (map[string]*template.Template, error) {
 	for _, p := range pages {
 		name := strings.TrimSuffix(strings.TrimPrefix(p, "templates/page_"), ".html")
 		t, err := template.New(name).Funcs(funcs).
-			ParseFS(templateFS, "templates/layout.html", p)
+			ParseFS(templateFS, "templates/layout.html", "templates/partial_*.html", p)
 		if err != nil {
 			return nil, fmt.Errorf("webui: %s: %w", p, err)
 		}

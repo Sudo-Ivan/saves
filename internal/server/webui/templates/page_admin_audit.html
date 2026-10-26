@@ -1,0 +1,22 @@
+{{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+<section class="panel">
+  <h1 class="panel__title">Audit log</h1>
+  <form class="form form--inline filters" method="get" action="{{.Base}}admin/audit">
+    <div class="field"><label class="field__label" for="q">Search</label><input class="field__input" id="q" name="q" type="search" value="{{.Data.Q}}" maxlength="100"></div>
+    <div class="field"><label class="field__label" for="action">Event</label>
+      <select class="field__select" id="action" name="action"><option value="">All events</option>{{$a := .Data.Action}}{{range .Data.Actions}}<option value="{{.}}"{{if eq . $a}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+    <div class="field"><label class="field__label" for="target">Target id</label><input class="field__input" id="target" name="target" type="text" value="{{.Data.Target}}" maxlength="64"></div>
+    <button class="button" type="submit">Filter</button>
+    <a class="button" href="{{.Data.CSV}}">Download CSV</a>
+  </form>
+  {{if .Data.Events}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Time</th><th class="table__head">Event</th><th class="table__head">Actor</th><th class="table__head">Target</th><th class="table__head">Address</th><th class="table__head">Detail</th></tr></thead>
+    <tbody>{{range .Data.Events}}
+      <tr class="table__row"><td class="table__cell">{{fdate .At}}</td><td class="table__cell">{{.Action}}</td><td class="table__cell">{{trunc .ActorID 12}}</td><td class="table__cell">{{if .TargetID}}{{.TargetType}} {{trunc .TargetID 14}}{{end}}</td><td class="table__cell">{{.IP}}</td><td class="table__cell">{{trunc .Detail 80}}</td></tr>
+    {{end}}</tbody></table></div>
+  {{if .Data.Next}}<p><a class="button button--small" href="{{.Data.Next}}">Older events</a></p>{{end}}
+  {{else}}<div class="empty"><p class="empty__title">No matching events</p><p class="empty__text">Events are recorded when audit logging is enabled.</p></div>{{end}}
+</section>
+{{end}}

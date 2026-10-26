@@ -1,0 +1,28 @@
+{{define "adminnav"}}
+<nav class="subnav" aria-label="Admin">
+  {{range .}}<a class="subnav__link" href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+</nav>
+{{end}}
+
+{{define "chart"}}
+<figure class="chart">
+  <figcaption class="chart__head"><span class="chart__title">{{.Title}}</span><span class="chart__total">{{.Total}}</span></figcaption>
+  {{if .Empty}}
+  <p class="chart__empty">No data in this period yet.</p>
+  {{else if eq .Kind "line"}}
+  <svg class="chart__svg" viewBox="0 0 {{.Line.W}} {{.Line.H}}" role="img" aria-label="{{.Aria}}">
+    {{range .Line.YTicks}}<line class="chart__grid" x1="44" x2="{{$.Line.W}}" y1="{{.Pos}}" y2="{{.Pos}}"></line><text class="chart__tick" x="40" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+    <path class="chart__area" d="{{.Line.Area}}"></path>
+    <polyline class="chart__line" points="{{.Line.Points}}"></polyline>
+    {{range .Line.XTicks}}<text class="chart__tick" x="{{.Pos}}" y="{{$.Line.H}}" text-anchor="middle">{{.Label}}</text>{{end}}
+  </svg>
+  {{else}}
+  <svg class="chart__svg" viewBox="0 0 {{.Bars.W}} {{.Bars.H}}" role="img" aria-label="{{.Aria}}">
+    {{range .Bars.YTicks}}<line class="chart__grid" x1="44" x2="{{$.Bars.W}}" y1="{{.Pos}}" y2="{{.Pos}}"></line><text class="chart__tick" x="40" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+    {{range .Bars.Bars}}<rect class="chart__bar" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Label}}: {{.Value}}</title></rect>{{end}}
+    {{if eq .Kind "stacked"}}{{range .Bars2.Bars}}<rect class="chart__bar chart__bar--b" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Label}}: {{.Value}}</title></rect>{{end}}{{end}}
+    {{range .Bars.XTicks}}<text class="chart__tick" x="{{.Pos}}" y="{{$.Bars.H}}" text-anchor="middle">{{.Label}}</text>{{end}}
+  </svg>
+  {{end}}
+</figure>
+{{end}}

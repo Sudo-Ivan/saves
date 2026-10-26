@@ -1,102 +1,126 @@
 {{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+{{with .Data}}
 <section class="panel">
-  <h1 class="panel__title">User {{.Data.U.ID}}</h1>
-  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
-  {{if .Data.Error}}<p class="notice notice--error" role="alert">{{.Data.Error}}</p>{{end}}
+  <h1 class="panel__title">{{.Name}}</h1>
+  <nav class="breadcrumbs"><a href="{{$.Base}}admin/users">Users</a> / {{.U.ID}}</nav>
+  {{if .Notice}}<p class="notice notice--info" role="status">{{.Notice}}</p>{{end}}
+  {{if .Error}}<p class="notice notice--error" role="alert">{{.Error}}</p>{{end}}
+  {{if .TempPassword}}<div class="panel panel--highlight"><p>Temporary password, shown once. Give it to the user over a private channel.</p><p><code class="code--block">{{.TempPassword}}</code></p></div>{{end}}
+  {{if .Status}}<p class="notice notice--warn" role="status">This account is {{.Status.State}}{{if .Status.Reason}}: {{.Status.Reason}}{{end}}{{if .Status.Until}}. Ends {{fdatep .Status.Until}}{{end}}.</p>{{end}}
+  {{if .Locked}}<p class="notice notice--warn" role="status">Sign-in is temporarily locked after repeated failures.</p>{{end}}
   <dl class="detail-list">
-    <dt class="detail-list__key">Subject</dt><dd class="detail-list__val">{{.Data.U.Subject}}</dd>
-    <dt class="detail-list__key">Tier</dt><dd class="detail-list__val">{{.Data.U.Tier}}</dd>
-    <dt class="detail-list__key">Disabled</dt><dd class="detail-list__val">{{.Data.U.Disabled}}</dd>
-    <dt class="detail-list__key">Quota</dt><dd class="detail-list__val">{{if .Data.U.QuotaBytes}}{{fsize .Data.U.QuotaBytes}}{{else}}tier default{{end}}</dd>
-    <dt class="detail-list__key">Used</dt><dd class="detail-list__val">{{fsize .Data.Usage.UsedBytes}}</dd>
-    <dt class="detail-list__key">Web username</dt><dd class="detail-list__val">{{if .Data.Cred}}{{.Data.Cred.Username}}{{else}}none{{end}}</dd>
-    <dt class="detail-list__key">Web admin</dt><dd class="detail-list__val">{{if .Data.Cred}}{{.Data.Cred.Admin}}{{else}}-{{end}}</dd>
-    <dt class="detail-list__key">TOTP</dt><dd class="detail-list__val">{{if .Data.Cred}}{{.Data.Cred.TOTPEnabled}}{{else}}-{{end}}</dd>
+    <dt class="detail-list__key">Subject</dt><dd class="detail-list__val">{{.U.Subject}}</dd>
+    <dt class="detail-list__key">Joined</dt><dd class="detail-list__val">{{fdate .U.CreatedAt}}</dd>
+    <dt class="detail-list__key">Tier</dt><dd class="detail-list__val">{{.U.Tier}}</dd>
+    <dt class="detail-list__key">Web sign-in</dt><dd class="detail-list__val">{{if .Cred}}{{.Cred.Username}}{{if .Cred.Admin}}, administrator{{end}}{{if .Cred.TOTPEnabled}}, two-factor on{{else}}, two-factor off{{end}}{{else}}Not set up{{end}}</dd>
+    <dt class="detail-list__key">Slots and snapshots</dt><dd class="detail-list__val">{{.Usage.Slots}} slots, {{.Usage.Snapshots}} snapshots</dd>
   </dl>
+  <div class="meter-block">
+    <p class="meter-block__label">Storage {{fsize .Usage.UsedBytes}}{{if .QuotaText}} of {{.QuotaText}}{{else}}, no quota{{end}}</p>
+    {{if .QuotaText}}<meter class="meter" min="0" max="100" low="70" high="90" optimum="10" value="{{.UsedPct}}">{{.UsedPct}} percent used</meter>{{end}}
+  </div>
 </section>
+
+<section class="panel">
+  <h2 class="panel__title">Moderation</h2>
+  {{if .Self}}<p class="field__hint">This is your own account, so ban and delete actions are unavailable.</p>{{else}}
+  <div class="ops">
+    {{if .Status}}
+    <div class="ops__item">
+      <h3 class="panel__subtitle">{{if eq .Status.State "pending"}}Approval{{else}}Ban{{end}}</h3>
+      {{if eq .Status.State "pending"}}
+      <form class="form form--inline" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="approve"><button class="button button--ink" type="submit">Approve account</button></form>
+      <form class="form form--inline" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="reject"><button class="button button--danger" type="submit">Reject and delete</button></form>
+      {{else}}
+      <form class="form form--inline" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="unban"><button class="button" type="submit">Lift the ban</button></form>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="ops__item">
+      <h3 class="panel__subtitle">Ban</h3>
+      <form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="ban">
+        <div class="field"><label class="field__label" for="reason">Reason (kept in the audit log)</label><input class="field__input" id="reason" name="reason" type="text" maxlength="200"></div>
+        <div class="field"><label class="field__label" for="days">Days (empty for no end)</label><input class="field__input" id="days" name="days" type="number" min="1" max="3650"></div>
+        <label class="field__check"><input type="checkbox" name="revoke_tokens" value="1"> Also revoke all API tokens</label>
+        <button class="button button--danger" type="submit">Ban account</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+  {{if .Locked}}
+  <form class="form form--inline" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="unlock"><button class="button" type="submit">Clear the sign-in lock</button></form>
+  {{end}}
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">Account settings</h2>
+  <div class="ops">
+    <form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="set_tier">
+      <div class="field"><label class="field__label" for="tier">Tier</label><input class="field__input" id="tier" name="tier" type="text" value="{{.U.Tier}}" required></div>
+      <button class="button" type="submit">Set tier</button></form>
+    <form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="set_quota">
+      <div class="field"><label class="field__label" for="quota">Quota in bytes (empty resets to the tier)</label><input class="field__input" id="quota" name="quota" type="number" min="0"></div>
+      <button class="button" type="submit">Set quota</button></form>
+  </div>
+  {{if .Cred}}
+  <h3 class="panel__subtitle">Sign-in and security</h3>
+  <p class="field__hint">These actions ask for your own password.</p>
+  <form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="set_password">
+    <div class="field"><label class="field__label" for="new_password">New password (at least 12 characters)</label><input class="field__input" id="new_password" name="new_password" type="password" autocomplete="new-password"></div>
+    <label class="field__check"><input type="checkbox" name="generate" value="1"> Generate a temporary password instead</label>
+    <div class="field"><label class="field__label" for="confirm_password_pw">Your password</label><input class="field__input" id="confirm_password_pw" name="confirm_password" type="password" autocomplete="current-password"></div>
+    <button class="button" type="submit">Replace password</button></form>
+  <div class="ops">
+    {{if .Cred.TOTPEnabled}}<form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="reset_2fa">
+      <div class="field"><label class="field__label" for="cp2">Your password</label><input class="field__input" id="cp2" name="confirm_password" type="password" autocomplete="current-password"></div>
+      <button class="button button--danger" type="submit">Reset two-factor</button></form>{{end}}
+    <form class="form" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="{{if .Cred.Admin}}revoke_admin{{else}}grant_admin{{end}}">
+      <div class="field"><label class="field__label" for="cp3">Your password</label><input class="field__input" id="cp3" name="confirm_password" type="password" autocomplete="current-password"></div>
+      <button class="button{{if .Cred.Admin}} button--danger{{end}}" type="submit">{{if .Cred.Admin}}Remove administrator{{else}}Make administrator{{end}}</button></form>
+  </div>
+  {{end}}
+  <form class="form form--inline" method="post" action="{{$.Base}}admin/users/{{.U.ID}}"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke_sessions"><button class="button" type="submit">Sign out all sessions</button></form>
+</section>
+
 <section class="panel">
   <h2 class="panel__title">API tokens</h2>
-  {{if .Data.Tokens}}
+  {{if .Tokens}}
   <div class="table-wrap"><table class="table">
     <thead><tr><th class="table__head">Name</th><th class="table__head">Status</th><th class="table__head">Expires</th><th class="table__head">Last used</th><th class="table__head"></th></tr></thead>
-    <tbody>
-    {{range .Data.Tokens}}
-      <tr class="table__row">
-        <td class="table__cell">{{if .Name}}{{.Name}}{{else}}Unnamed{{end}}</td>
-        <td class="table__cell">{{.Status}}</td>
-        <td class="table__cell">{{.ExpiresN}}</td>
-        <td class="table__cell">{{if .LastUsedAt}}{{fdatep .LastUsedAt}}{{else}}Not used yet{{end}}</td>
-        <td class="table__cell table__cell--actions"><a class="button button--small" href="{{$.Base}}account/tokens/{{.ID}}">Details</a></td>
-      </tr>
-    {{end}}
-    </tbody>
-  </table></div>
-  {{else}}
-  <div class="empty"><p class="empty__title">No tokens</p><p class="empty__text">This user has not created an API token.</p></div>
-  {{end}}
+    <tbody>{{range .Tokens}}
+      <tr class="table__row"><td class="table__cell">{{if .Name}}{{.Name}}{{else}}Unnamed{{end}}</td><td class="table__cell">{{.Status}}</td><td class="table__cell">{{.ExpiresN}}</td><td class="table__cell">{{if .LastUsedAt}}{{fdatep .LastUsedAt}}{{else}}Not used yet{{end}}</td>
+      <td class="table__cell table__cell--actions"><a class="button button--small" href="{{$.Base}}account/tokens/{{.ID}}">Details</a></td></tr>
+    {{end}}</tbody></table></div>
+  {{else}}<div class="empty"><p class="empty__title">No tokens</p><p class="empty__text">This user has not created an API token.</p></div>{{end}}
 </section>
+
 <section class="panel">
-  <h2 class="panel__title">Actions</h2>
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="set_tier">
-    <div class="field">
-      <label class="field__label" for="tier">Tier</label>
-      <input class="field__input" id="tier" name="tier" type="text" value="{{.Data.U.Tier}}" required>
-    </div>
-    <button class="button" type="submit">Set tier</button>
-  </form>
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="set_quota">
-    <div class="field">
-      <label class="field__label" for="quota">Quota bytes (0 or empty resets to tier default)</label>
-      <input class="field__input" id="quota" name="quota" type="number" min="0">
-    </div>
-    <button class="button" type="submit">Set quota</button>
-  </form>
-  {{if .Data.U.Disabled}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="enable">
-    <button class="button" type="submit">Enable user</button>
-  </form>
-  {{else}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="disable">
-    <button class="button button--danger" type="submit">Disable user</button>
-  </form>
-  {{end}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="revoke_sessions">
-    <button class="button" type="submit">Revoke sessions</button>
-  </form>
-  {{if .Data.Cred}}
-  {{if .Data.Cred.Admin}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="revoke_admin">
-    <button class="button button--danger" type="submit">Revoke web admin</button>
-  </form>
-  {{else}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="grant_admin">
-    <button class="button" type="submit">Grant web admin</button>
-  </form>
-  {{end}}
-  {{if .Data.Cred.TOTPEnabled}}
-  <form class="form form--inline" method="post" action="{{.Base}}admin/users/{{.Data.U.ID}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="hidden" name="action" value="reset_2fa">
-    <button class="button button--danger" type="submit">Reset two-factor</button>
-  </form>
-  {{end}}
-  {{end}}
-  <p class="panel__actions">
-    <a class="button button--danger" href="{{.Base}}admin/users/{{.Data.U.ID}}/delete">Delete user</a>
-  </p>
+  <h2 class="panel__title">Web sessions</h2>
+  {{if .Sessions}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Signed in</th><th class="table__head">Last seen</th><th class="table__head">Address</th><th class="table__head">Client</th></tr></thead>
+    <tbody>{{range .Sessions}}<tr class="table__row"><td class="table__cell">{{fdate .CreatedAt}}</td><td class="table__cell">{{fdate .LastSeenAt}}</td><td class="table__cell">{{.IP}}</td><td class="table__cell">{{trunc .UserAgent 60}}</td></tr>{{end}}</tbody></table></div>
+  {{else}}<div class="empty"><p class="empty__title">No active sessions</p></div>{{end}}
 </section>
+
+<section class="panel">
+  <h2 class="panel__title">Recent activity on this account</h2>
+  {{if .Audit}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Time</th><th class="table__head">Event</th><th class="table__head">Address</th><th class="table__head">Detail</th></tr></thead>
+    <tbody>{{range .Audit}}<tr class="table__row"><td class="table__cell">{{fdate .At}}</td><td class="table__cell">{{.Action}}</td><td class="table__cell">{{.IP}}</td><td class="table__cell">{{trunc .Detail 80}}</td></tr>{{end}}</tbody></table></div>
+  {{else}}<div class="empty"><p class="empty__title">Nothing recorded</p></div>{{end}}
+</section>
+
+{{if not .Self}}
+<section class="panel">
+  <h2 class="panel__title">Danger zone</h2>
+  <p class="field__hint">Deleting disables the account at once and removes its saves after the retention grace period.</p>
+  <p class="panel__actions"><a class="button button--danger" href="{{$.Base}}admin/users/{{.U.ID}}/delete">Delete account</a></p>
+</section>
+{{end}}
+{{end}}
 {{end}}

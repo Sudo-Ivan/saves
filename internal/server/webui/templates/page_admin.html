@@ -1,18 +1,86 @@
 {{define "main"}}
+{{template "adminnav" .Data.Tabs}}
+{{if .Data.Refresh}}<meta http-equiv="refresh" content="{{.Data.Refresh}}">{{end}}
 <section class="panel">
-  <h1 class="panel__title">Admin</h1>
-  {{if .Data.Notice}}<p class="notice notice--info" role="status">{{.Data.Notice}}</p>{{end}}
-  <dl class="detail-list">
-    <dt class="detail-list__key">Users</dt><dd class="detail-list__val">{{.Data.Users}}</dd>
-    <dt class="detail-list__key">Version</dt><dd class="detail-list__val">{{.Data.Version}}</dd>
+  <div class="panel__bar">
+    <h1 class="panel__title">Overview</h1>
+    <p class="panel__meta">{{if .Data.Refresh}}Refreshing every {{.Data.Refresh}} seconds. <a href="{{.Base}}admin">Stop</a>{{else}}<a href="{{.Base}}admin?refresh=30">Refresh every 30 seconds</a>{{end}}</p>
+  </div>
+  <dl class="tiles">
+    {{range .Data.Tiles}}
+    <div class="tile">
+      <dt class="tile__label">{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</dt>
+      <dd class="tile__value">{{.Value}}</dd>
+      {{if .Sub}}<dd class="tile__sub">{{.Sub}}</dd>{{end}}
+    </div>
+    {{end}}
   </dl>
-  <p><a class="button" href="{{.Base}}admin/users">Manage users</a></p>
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">Last hour</h2>
+  <div class="live">
+    <figure class="live__item"><figcaption class="live__label">Requests <span class="live__value">{{.Data.LiveReq}}</span></figcaption>
+      <svg class="spark" viewBox="0 0 {{.Data.SparkReq.W}} {{.Data.SparkReq.H}}" role="img" aria-label="Requests per minute over the last hour"><polyline class="chart__line" points="{{.Data.SparkReq.Points}}"></polyline></svg></figure>
+    <figure class="live__item"><figcaption class="live__label">Server errors <span class="live__value">{{.Data.LiveErr}}</span></figcaption>
+      <svg class="spark spark--err" viewBox="0 0 {{.Data.SparkErr.W}} {{.Data.SparkErr.H}}" role="img" aria-label="Server errors per minute over the last hour"><polyline class="chart__line" points="{{.Data.SparkErr.Points}}"></polyline></svg></figure>
+    <dl class="live__stats">
+      <div><dt>Received</dt><dd>{{.Data.LiveIn}}</dd></div>
+      <div><dt>Sent</dt><dd>{{.Data.LiveOut}}</dd></div>
+    </dl>
+  </div>
+  <p class="field__hint">This panel is kept in memory and restarts empty with the server.</p>
+</section>
+
+{{if or .Data.Crit .Data.Warn}}
+<section class="panel">
+  <h2 class="panel__title">Security checkup</h2>
+  <p>{{.Data.Crit}} to fix now, {{.Data.Warn}} worth fixing. <a href="{{.Base}}admin/security">Open the checkup</a></p>
+  {{range .Data.Critical}}<p class="notice notice--error" role="alert"><strong>{{.Title}}</strong> {{.Detail}}</p>{{end}}
+</section>
+{{end}}
+
+<section class="panel">
+  <h2 class="panel__title">Last 30 days</h2>
+  <div class="charts">
+    {{range .Data.Panels}}{{template "chart" .}}{{end}}
+  </div>
+</section>
+
+<div class="split">
+<section class="panel">
+  <h2 class="panel__title">Largest accounts</h2>
+  {{if .Data.TopUsers}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Account</th><th class="table__head num">Stored</th><th class="table__head num">Snapshots</th></tr></thead>
+    <tbody>{{range .Data.TopUsers}}
+      <tr class="table__row"><td class="table__cell"><a href="{{$.Base}}admin/users/{{.User.ID}}">{{if .Username}}{{.Username}}{{else}}{{.User.Subject}}{{end}}</a></td><td class="table__cell num">{{fsize .UsedBytes}}</td><td class="table__cell num">{{.Snapshots}}</td></tr>
+    {{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty"><p class="empty__title">No stored saves yet</p></div>{{end}}
 </section>
 <section class="panel">
-  <h2 class="panel__title">Maintenance</h2>
-  <form class="form form--inline" method="post" action="{{.Base}}admin/gc">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button class="button" type="submit">Run garbage collection</button>
-  </form>
+  <h2 class="panel__title">Largest apps</h2>
+  {{if .Data.TopApps}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">App</th><th class="table__head num">Latest saves</th><th class="table__head num">Slots</th></tr></thead>
+    <tbody>{{range .Data.TopApps}}
+      <tr class="table__row"><td class="table__cell">{{.App}}</td><td class="table__cell num">{{fsize .Bytes}}</td><td class="table__cell num">{{.Slots}}</td></tr>
+    {{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty"><p class="empty__title">No apps yet</p></div>{{end}}
+</section>
+</div>
+
+<section class="panel">
+  <h2 class="panel__title">Recent activity</h2>
+  {{if .Data.Audit}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th class="table__head">Time</th><th class="table__head">Event</th><th class="table__head">Target</th><th class="table__head">Address</th></tr></thead>
+    <tbody>{{range .Data.Audit}}
+      <tr class="table__row"><td class="table__cell">{{fdate .At}}</td><td class="table__cell">{{.Action}}</td><td class="table__cell">{{if .TargetID}}{{.TargetType}} {{trunc .TargetID 12}}{{end}}</td><td class="table__cell">{{.IP}}</td></tr>
+    {{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty"><p class="empty__title">No events recorded yet</p><p class="empty__text">Sign-ins, moderation and settings changes appear here.</p></div>{{end}}
 </section>
 {{end}}
